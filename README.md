@@ -84,7 +84,7 @@ uv pip install -e .
 ⚠️ **IMPORTANT**: Keep this JSON file secure! Add it to `.gitignore` and never commit it to version control.
 
 #### c) Share Your Google Sheet
-1. Open your Google Sheet named "Transactions"
+1. Open your Google Sheet (defaults to "Transactions" unless you configured a different workbook name)
 2. Click the **Share** button
 3. Add the service account email from the JSON file (looks like: `xxx@xxx.iam.gserviceaccount.com`)
 4. Give it **Viewer** access
@@ -92,7 +92,7 @@ uv pip install -e .
 
 ### 4. Prepare Your Google Sheet
 
-Your Google Sheet should be named **"Transactions"** and have a tab also named **"Transactions"** with these columns:
+Your Google Sheet must have a worksheet/tab named **"Transactions"** with these columns. The workbook itself defaults to **"Transactions"**, but you can override that name via configuration (see below).
 
 | Column | Description | Example |
 |--------|-------------|---------|
@@ -124,6 +124,16 @@ streamlit run app.py
 
 The app will open in your browser at `http://localhost:8501`
 
+### 🔧 Configure the Workbook Name (Optional)
+
+The app reads transactions from the worksheet **"Transactions"**. The Google Sheets workbook defaults to the same name, but you can override it without changing code:
+
+- **Streamlit secrets**: add `workbook_name = "My Portfolio"` to `.streamlit/secrets.toml`.
+- **Environment variable**: export `PORTFOLIO_WORKBOOK_NAME="My Portfolio"` before launching Streamlit.
+- **JSON file**: create `config/workbook.json` (make the `config/` folder if needed) containing `{ "workbook_name": "My Portfolio" }`.
+
+The current workbook name is displayed in the sidebar under **Sheet Configuration** for quick verification.
+
 ## 🔐 Security & Privacy
 
 ### Credentials Are Never Stored
@@ -145,8 +155,7 @@ The app will open in your browser at `http://localhost:8501`
 ### First Time Setup
 
 1. **Upload Credentials File**: In the sidebar, upload the Google Service Account JSON file you downloaded from Google Cloud Console
-2. **Enter Sheet Name**: Confirm or modify the Google Sheet name (default: "Transactions")
-3. **Click Refresh**: The app will load your transactions and fetch current market data
+2. **Click Refresh**: The app will load your transactions and fetch current market data using the configured workbook name
 
 ### Understanding the Dashboard
 

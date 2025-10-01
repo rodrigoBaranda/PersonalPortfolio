@@ -6,28 +6,30 @@ import pandas as pd
 from typing import Dict, Optional
 from data.google_sheets import GoogleSheetsClient
 from data.market_data import MarketDataProvider
+from utils.config import WORKBOOK_NAME
 
 
 class PortfolioManager:
     """Manages portfolio data and calculations"""
 
-    def __init__(self, credentials_dict: Dict, sheet_name: str):
+    def __init__(self, credentials_dict: Dict, workbook_name: Optional[str] = None):
         """
         Initialize portfolio manager
 
         Args:
             credentials_dict: Google service account credentials
-            sheet_name: Name of the Google Sheet
+            workbook_name: Optional override for the Google Sheets workbook
+                name. If omitted, the configured workbook name is used.
         """
         self.sheets_client = GoogleSheetsClient(credentials_dict)
         self.market_data = MarketDataProvider()
-        self.sheet_name = sheet_name
+        self.workbook_name = workbook_name or WORKBOOK_NAME
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
 
     def load_transactions(self) -> pd.DataFrame:
         """Load transactions from Google Sheets"""
-        self._transactions_df = self.sheets_client.get_transactions(self.sheet_name)
+        self._transactions_df = self.sheets_client.get_transactions(self.workbook_name)
         return self._transactions_df
 
     def get_transactions(self) -> Optional[pd.DataFrame]:

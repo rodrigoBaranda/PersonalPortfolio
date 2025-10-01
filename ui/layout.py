@@ -12,6 +12,7 @@ from ui.components import (
     render_manual_input_section,
     render_transactions_expander
 )
+from utils.config import WORKBOOK_ENV_VAR, WORKBOOK_JSON_PATH, WORKBOOK_NAME, WORKSHEET_NAME
 
 
 def render_sidebar() -> Dict:
@@ -19,7 +20,9 @@ def render_sidebar() -> Dict:
     Render sidebar with configuration options
 
     Returns:
-        Dictionary with configuration values
+        Dictionary with configuration values such as the uploaded credentials
+        file handle, the resolved workbook name, and whether a refresh was
+        requested.
     """
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -35,11 +38,14 @@ def render_sidebar() -> Dict:
             st.caption(f"✅ Loaded credentials file: {credentials_file.name}")
 
         st.subheader("📊 Sheet Configuration")
-        sheet_name = st.text_input(
-            "Google Sheet Name:",
-            value="Transactions",
-            help="Name of your Google Sheet (not the tab name)"
+        st.caption(
+            "Transactions are loaded from the worksheet "
+            f"**{WORKSHEET_NAME}**. Override the workbook name by setting "
+            f"`st.secrets['workbook_name']`, the `{WORKBOOK_ENV_VAR}` environment "
+            "variable, or creating a small JSON file at "
+            f"`{WORKBOOK_JSON_PATH.as_posix()}` with `{{\"workbook_name\": \"My Sheet\"}}`."
         )
+        st.info(f"Current workbook: {WORKBOOK_NAME}")
 
         st.markdown("---")
         refresh_button = st.button("🔄 Refresh Data", type="primary", use_container_width=True)
@@ -49,7 +55,7 @@ def render_sidebar() -> Dict:
 
     return {
         'credentials_file': credentials_file,
-        'sheet_name': sheet_name,
+        'workbook_name': WORKBOOK_NAME,
         'refresh_requested': refresh_button
     }
 

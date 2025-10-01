@@ -8,6 +8,8 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from typing import Dict, Optional
 
+from utils.config import WORKBOOK_NAME, WORKSHEET_NAME
+
 
 class GoogleSheetsClient:
     """Client for Google Sheets API interactions"""
@@ -48,18 +50,19 @@ class GoogleSheetsClient:
             st.error(f"❌ Error connecting to Google Sheets: {str(e)}")
             return None
 
-    def get_transactions(self, sheet_name: str) -> Optional[pd.DataFrame]:
+    def get_transactions(self, sheet_name: str = WORKBOOK_NAME) -> Optional[pd.DataFrame]:
         """
         Load transactions from Google Sheets
 
         Args:
-            sheet_name: Name of the Google Sheet
+            sheet_name: Name of the Google Sheets workbook. Defaults to the
+                configured workbook name.
 
         Returns:
             DataFrame with transaction data or None if loading fails
         """
         try:
-            sheet = self.client.open(sheet_name).worksheet("Transactions")
+            sheet = self.client.open(sheet_name).worksheet(WORKSHEET_NAME)
             data = sheet.get_all_records()
             df = pd.DataFrame(data)
 
@@ -69,11 +72,21 @@ class GoogleSheetsClient:
 
             return df
         except gspread.exceptions.SpreadsheetNotFound:
-            st.error(f"❌ Google Sheet '{sheet_name}' not found. Please check the name.")
+            st.error(
+                f"❌ Google Sheet workbook '{sheet_name}' not found. "
+                "Update the configured workbook name if needed."
+            )
             return None
         except gspread.exceptions.WorksheetNotFound:
-            st.error(f"❌ Worksheet 'Transactions' not found in '{sheet_name}'.")
+            st.error(
+                f"❌ Worksheet '{WORKSHEET_NAME}' not found in "
+                f"'{sheet_name}'. Please ensure the tab name stays exactly "
+                f"'{WORKSHEET_NAME}'."
+            )
             return None
         except Exception as e:
-            st.error(f"❌ Error loading transactions: {str(e)}")
+            st.error(
+                f"❌ Error loading transactions from workbook '{sheet_name}' "
+                f"/ worksheet '{WORKSHEET_NAME}': {str(e)}"
+            )
             return None

@@ -53,7 +53,7 @@ def main():
     # Initialize portfolio manager
     portfolio_manager = PortfolioManager(
         credentials_dict=credentials_dict,
-        sheet_name=config['sheet_name']
+        workbook_name=config.get('workbook_name')
     )
 
     # Render dashboard
