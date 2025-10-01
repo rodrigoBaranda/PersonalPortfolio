@@ -28,17 +28,27 @@ def main():
     # Render sidebar and get configuration
     config = render_sidebar()
 
-    # Check if credentials are provided
-    if not config['credentials_json']:
-        show_setup_instructions()
-        return
+    # Determine credentials source
+    credentials_dict = None
 
-    # Parse credentials
-    try:
-        credentials_dict = json.loads(config['credentials_json'])
-    except json.JSONDecodeError:
-        st.error("❌ Invalid JSON format for credentials. Please check and try again.")
-        return
+    if "google_credentials" in st.secrets:
+        credentials_dict = dict(st.secrets["google_credentials"])
+    else:
+        credentials_file = config.get('credentials_file')
+        if credentials_file is None:
+            show_setup_instructions()
+            return
+
+        # Parse credentials from uploaded file
+        try:
+            credentials_data = credentials_file.getvalue().decode("utf-8")
+            credentials_dict = json.loads(credentials_data)
+        except UnicodeDecodeError:
+            st.error("❌ Unable to read the uploaded file. Please ensure it is a valid JSON file.")
+            return
+        except json.JSONDecodeError:
+            st.error("❌ Invalid JSON format for credentials. Please check and try again.")
+            return
 
     # Initialize portfolio manager
     portfolio_manager = PortfolioManager(
