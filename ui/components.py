@@ -10,7 +10,7 @@ from typing import List
 
 def show_setup_instructions():
     """Display setup instructions when credentials are not provided"""
-    st.info("👈 Please provide your Google Sheets credentials in the sidebar to get started.")
+    st.info("👈 Please upload your Google Sheets service account JSON file in the sidebar to get started.")
 
     st.markdown("""
     ### 🚀 Setup Instructions

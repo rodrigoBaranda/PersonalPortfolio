@@ -25,12 +25,14 @@ def render_sidebar() -> Dict:
         st.header("⚙️ Configuration")
 
         st.subheader("🔐 Google Sheets Credentials")
-        credentials_json = st.text_area(
-            "Paste your Service Account JSON:",
-            height=200,
-            help="Get this from Google Cloud Console > IAM & Admin > Service Accounts",
-            placeholder='{"type": "service_account", ...}'
+        credentials_file = st.file_uploader(
+            "Upload your Service Account JSON:",
+            type=["json"],
+            help="Upload the JSON key file downloaded from Google Cloud Console > IAM & Admin > Service Accounts"
         )
+
+        if credentials_file is not None:
+            st.caption(f"✅ Loaded credentials file: {credentials_file.name}")
 
         st.subheader("📊 Sheet Configuration")
         sheet_name = st.text_input(
@@ -46,7 +48,7 @@ def render_sidebar() -> Dict:
         st.caption("💡 Your credentials are never stored or shared")
 
     return {
-        'credentials_json': credentials_json,
+        'credentials_file': credentials_file,
         'sheet_name': sheet_name,
         'refresh_requested': refresh_button
     }

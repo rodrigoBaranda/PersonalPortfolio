@@ -144,7 +144,7 @@ The app will open in your browser at `http://localhost:8501`
 
 ### First Time Setup
 
-1. **Paste Credentials**: In the sidebar, paste the entire contents of your Google Service Account JSON file
+1. **Upload Credentials File**: In the sidebar, upload the Google Service Account JSON file you downloaded from Google Cloud Console
 2. **Enter Sheet Name**: Confirm or modify the Google Sheet name (default: "Transactions")
 3. **Click Refresh**: The app will load your transactions and fetch current market data
 
@@ -225,12 +225,17 @@ client_x509_cert_url = "your-cert-url"
 5. Update `app.py` to use secrets:
 
 ```python
-# In app.py, replace credentials input with:
-if st.secrets.get("google_credentials"):
+# In app.py, load credentials from Streamlit secrets when available:
+if "google_credentials" in st.secrets:
     credentials_dict = dict(st.secrets["google_credentials"])
 else:
-    # Fallback to manual input for local development
-    credentials_json = st.sidebar.text_area(...)
+    credentials_file = config.get("credentials_file")
+    if credentials_file is None:
+        show_setup_instructions()
+        return
+
+    credentials_data = credentials_file.getvalue().decode("utf-8")
+    credentials_dict = json.loads(credentials_data)
 ```
 
 ## ❓ Troubleshooting
@@ -238,7 +243,7 @@ else:
 ### "Error connecting to Google Sheets"
 - Verify your JSON credentials are valid and properly formatted
 - Ensure the Google Sheets API is enabled in your Google Cloud project
-- Check that you've pasted the complete JSON (starts with `{` and ends with `}`)
+- Check that you've uploaded a complete JSON file (starts with `{` and ends with `}`)
 
 ### "Error loading transactions"
 - Check that your Google Sheet is named correctly
