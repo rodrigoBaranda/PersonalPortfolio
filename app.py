@@ -2,7 +2,6 @@
 Investment Portfolio Tracker - Main Application
 Entry point for the Streamlit application
 """
-import json
 import streamlit as st
 from ui.layout import render_sidebar, render_dashboard
 from ui.components import show_setup_instructions
@@ -33,7 +32,7 @@ def main():
 
     # Render sidebar and get configuration
     config = render_sidebar()
-    logger.debug("Sidebar configuration: %s", {k: v for k, v in config.items() if k != 'credentials_file'})
+    logger.debug("Sidebar configuration: %s", config)
 
     # Determine credentials source
     credentials_dict = None
@@ -42,36 +41,40 @@ def main():
         credentials_dict = dict(st.secrets["google_credentials"])
         logger.info("Loaded credentials from Streamlit secrets")
     else:
-        credentials_file = config.get('credentials_file')
-        if credentials_file is None:
-            show_setup_instructions()
-            logger.warning("Credentials file not provided; showing setup instructions")
-            return
+        show_setup_instructions()
+        logger.warning("Google Sheets credentials not found in Streamlit secrets")
+        return
 
-        # Parse credentials from uploaded file
-        try:
-            credentials_data = credentials_file.getvalue().decode("utf-8")
-            credentials_dict = json.loads(credentials_data)
-            logger.info("Loaded credentials from uploaded file: %s", credentials_file.name)
-        except UnicodeDecodeError:
-            st.error("❌ Unable to read the uploaded file. Please ensure it is a valid JSON file.")
-            logger.exception("Failed to decode uploaded credentials file")
-            return
-        except json.JSONDecodeError:
-            st.error("❌ Invalid JSON format for credentials. Please check and try again.")
-            logger.exception("Uploaded credentials file is not valid JSON")
-            return
+    # Determine sheet configuration (kept out of the sidebar)
+    secrets_sheets = st.secrets.get("google_sheets", {})
+    spreadsheet_id = (
+        st.secrets.get("google_spreadsheet_id")
+        or st.secrets.get("google_sheets_spreadsheet_id")
+        or secrets_sheets.get("spreadsheet_id")
+    )
+    sheet_name = (
+        st.secrets.get("google_sheet_name")
+        or st.secrets.get("google_sheets_sheet_name")
+        or secrets_sheets.get("sheet_name", "Transactions")
+    )
+
+    if not spreadsheet_id:
+        st.error(
+            "❌ Google Spreadsheet ID not configured. Please add `google_spreadsheet_id` to your Streamlit secrets."
+        )
+        logger.error("Spreadsheet ID not configured in Streamlit secrets")
+        return
 
     # Initialize portfolio manager
     portfolio_manager = PortfolioManager(
         credentials_dict=credentials_dict,
-        workbook_name=config['workbook_name'],
-        worksheet_name=config['worksheet_name']
+        spreadsheet_id=spreadsheet_id,
+        sheet_name=sheet_name,
     )
     logger.info(
-        "PortfolioManager initialized for workbook '%s' and worksheet '%s'",
-        config['workbook_name'],
-        config['worksheet_name']
+        "PortfolioManager initialized for spreadsheet '%s' and sheet '%s'",
+        spreadsheet_id,
+        sheet_name,
     )
 
     # Render dashboard

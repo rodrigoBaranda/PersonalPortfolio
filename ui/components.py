@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 def show_setup_instructions():
     """Display setup instructions when credentials are not provided"""
     logger.info("Displaying setup instructions")
-    st.info("👈 Please upload your Google Sheets service account JSON file in the sidebar to get started.")
+    st.info("👈 Add your Google Sheets service account JSON to Streamlit secrets to get started.")
 
     st.markdown("""
     ### 🚀 Setup Instructions
@@ -32,13 +32,18 @@ def show_setup_instructions():
     - Click **Keys** tab > **Add Key** > **Create New Key**
     - Choose **JSON** format and download
 
-    #### 3. Share Your Google Sheet
+    #### 3. Add Credentials to Streamlit Secrets
+    - Open your `.streamlit/secrets.toml`
+    - Add a `google_credentials` entry with the JSON content
+    - Redeploy or restart the app so the new secrets are available
+
+    #### 4. Share Your Google Sheet
     - Open your Google Sheet named "Transactions"
     - Click **Share** button
     - Add the service account email (from JSON file)
     - Give **Viewer** access
 
-    #### 4. Prepare Your Sheet
+    #### 5. Prepare Your Sheet
     Your "Transactions" sheet should have these columns:
     - **Ticker**: Stock symbol or investment name
     - **Type**: BUY, SELL, or DIVIDEND

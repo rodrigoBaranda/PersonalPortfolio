@@ -144,8 +144,8 @@ The app will open in your browser at `http://localhost:8501`
 
 ### First Time Setup
 
-1. **Upload Credentials File**: In the sidebar, upload the Google Service Account JSON file you downloaded from Google Cloud Console
-2. **Enter Sheet Name**: Confirm or modify the Google Sheet name (default: "Transactions")
+1. **Configure Credentials**: Add your Google Service Account JSON content to `.streamlit/secrets.toml` under the key `[google_credentials]`
+2. **Provide Sheet Details**: Add your spreadsheet ID and sheet name to `st.secrets` (e.g. `google_spreadsheet_id` and `google_sheet_name`)
 3. **Click Refresh**: The app will load your transactions and fetch current market data
 
 ### Understanding the Dashboard
