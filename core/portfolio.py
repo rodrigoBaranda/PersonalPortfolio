@@ -4,6 +4,8 @@ Handles portfolio calculations and data processing
 """
 import pandas as pd
 from typing import Dict, Optional
+
+from core.data_quality import clean_transactions
 from data.google_sheets import GoogleSheetsClient
 from data.market_data import MarketDataProvider
 from utils import get_logger
@@ -43,18 +45,21 @@ class PortfolioManager:
             self.spreadsheet_id,
             self.sheet_name,
         )
-        self._transactions_df = self.sheets_client.get_transactions(
+        raw_transactions = self.sheets_client.get_transactions(
             self.spreadsheet_id,
             self.sheet_name,
         )
-        if self._transactions_df is None:
+        if raw_transactions is None:
             logger.warning(
                 "No transactions returned for spreadsheet '%s' / sheet '%s'",
                 self.spreadsheet_id,
                 self.sheet_name,
             )
         else:
-            logger.info("Loaded %d transactions", len(self._transactions_df))
+            logger.info("Loaded %d transactions", len(raw_transactions))
+
+        self._transactions_df = clean_transactions(raw_transactions)
+        logger.info("Transactions after data quality checks: %d", len(self._transactions_df))
         return self._transactions_df
 
     def get_transactions(self) -> Optional[pd.DataFrame]:
