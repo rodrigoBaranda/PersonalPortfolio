@@ -12,7 +12,10 @@ from ui.components import (
     render_manual_input_section,
     render_transactions_expander
 )
-from utils.config import WORKBOOK_ENV_VAR, WORKBOOK_JSON_PATH, WORKBOOK_NAME, WORKSHEET_NAME
+from utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def render_sidebar() -> Dict:
@@ -20,9 +23,7 @@ def render_sidebar() -> Dict:
     Render sidebar with configuration options
 
     Returns:
-        Dictionary with configuration values such as the uploaded credentials
-        file handle, the resolved workbook name, and whether a refresh was
-        requested.
+        Dictionary with configuration values
     """
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -36,26 +37,27 @@ def render_sidebar() -> Dict:
 
         if credentials_file is not None:
             st.caption(f"✅ Loaded credentials file: {credentials_file.name}")
+            logger.info("User uploaded credentials file '%s'", credentials_file.name)
 
         st.subheader("📊 Sheet Configuration")
-        st.caption(
-            "Transactions are loaded from the worksheet "
-            f"**{WORKSHEET_NAME}**. Override the workbook name by setting "
-            f"`st.secrets['workbook_name']`, the `{WORKBOOK_ENV_VAR}` environment "
-            "variable, or creating a small JSON file at "
-            f"`{WORKBOOK_JSON_PATH.as_posix()}` with `{{\"workbook_name\": \"My Sheet\"}}`."
+        sheet_name = st.text_input(
+            "Google Sheet Name:",
+            value="Transactions",
+            help="Name of your Google Sheet (not the tab name)"
         )
-        st.info(f"Current workbook: {WORKBOOK_NAME}")
+        logger.debug("Sheet name input: %s", sheet_name)
 
         st.markdown("---")
         refresh_button = st.button("🔄 Refresh Data", type="primary", use_container_width=True)
+        if refresh_button:
+            logger.info("User requested data refresh")
 
         st.markdown("---")
         st.caption("💡 Your credentials are never stored or shared")
 
     return {
         'credentials_file': credentials_file,
-        'workbook_name': WORKBOOK_NAME,
+        'sheet_name': sheet_name,
         'refresh_requested': refresh_button
     }
 
@@ -69,10 +71,12 @@ def render_dashboard(portfolio_manager: PortfolioManager):
     """
     # Load transactions
     with st.spinner("📥 Loading transactions from Google Sheets..."):
+        logger.info("Starting transaction load")
         transactions_df = portfolio_manager.load_transactions()
 
     if transactions_df is None or transactions_df.empty:
         st.warning("⚠️ No transactions data available. Please check your Google Sheet.")
+        logger.warning("No transactions data available after load")
         return
 
     # Show raw transactions in expander
@@ -80,10 +84,12 @@ def render_dashboard(portfolio_manager: PortfolioManager):
 
     # Calculate positions
     with st.spinner("🔢 Processing positions..."):
+        logger.info("Calculating positions")
         positions = portfolio_manager.calculate_positions()
 
     if not positions:
         st.warning("⚠️ No active positions found.")
+        logger.warning("No active positions found after calculation")
         return
 
     # Get tickers that need manual input
@@ -91,16 +97,19 @@ def render_dashboard(portfolio_manager: PortfolioManager):
 
     # Render manual input section if needed
     if tickers_needing_input:
+        logger.info("Tickers requiring manual input: %s", tickers_needing_input)
         render_manual_input_section(tickers_needing_input)
 
     # Calculate portfolio value with manual inputs
     with st.spinner("📈 Fetching market data..."):
+        logger.info("Calculating portfolio value using manual inputs")
         portfolio_df = portfolio_manager.calculate_portfolio_value(
             st.session_state.manual_values
         )
 
     if portfolio_df.empty:
         st.warning("⚠️ No positions to display. Please provide values for manual inputs.")
+        logger.warning("Portfolio data frame is empty after value calculation")
         return
 
     # Render summary metrics
@@ -114,3 +123,4 @@ def render_dashboard(portfolio_manager: PortfolioManager):
     # Footer
     st.markdown("---")
     st.caption(f"📅 Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("Dashboard rendering completed")

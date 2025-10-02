@@ -6,30 +6,38 @@ import pandas as pd
 from typing import Dict, Optional
 from data.google_sheets import GoogleSheetsClient
 from data.market_data import MarketDataProvider
-from utils.config import WORKBOOK_NAME
+from utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class PortfolioManager:
     """Manages portfolio data and calculations"""
 
-    def __init__(self, credentials_dict: Dict, workbook_name: Optional[str] = None):
+    def __init__(self, credentials_dict: Dict, sheet_name: str):
         """
         Initialize portfolio manager
 
         Args:
             credentials_dict: Google service account credentials
-            workbook_name: Optional override for the Google Sheets workbook
-                name. If omitted, the configured workbook name is used.
+            sheet_name: Name of the Google Sheet
         """
         self.sheets_client = GoogleSheetsClient(credentials_dict)
         self.market_data = MarketDataProvider()
-        self.workbook_name = workbook_name or WORKBOOK_NAME
+        self.sheet_name = sheet_name
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
+        logger.info("PortfolioManager created for sheet '%s'", sheet_name)
 
     def load_transactions(self) -> pd.DataFrame:
         """Load transactions from Google Sheets"""
-        self._transactions_df = self.sheets_client.get_transactions(self.workbook_name)
+        logger.info("Loading transactions for sheet '%s'", self.sheet_name)
+        self._transactions_df = self.sheets_client.get_transactions(self.sheet_name)
+        if self._transactions_df is None:
+            logger.warning("No transactions returned for sheet '%s'", self.sheet_name)
+        else:
+            logger.info("Loaded %d transactions", len(self._transactions_df))
         return self._transactions_df
 
     def get_transactions(self) -> Optional[pd.DataFrame]:
@@ -44,6 +52,7 @@ class PortfolioManager:
             Dictionary mapping ticker to position data
         """
         if self._transactions_df is None or self._transactions_df.empty:
+            logger.warning("Cannot calculate positions without transactions")
             return {}
 
         positions = {}
@@ -51,6 +60,7 @@ class PortfolioManager:
         for _, row in self._transactions_df.iterrows():
             ticker = self._extract_ticker(row)
             if not ticker:
+                logger.debug("Skipping row without ticker: %s", row.to_dict())
                 continue
 
             transaction_type = str(row.get('Type', row.get('type', ''))).upper()
@@ -74,8 +84,11 @@ class PortfolioManager:
             elif transaction_type == 'DIVIDEND':
                 # Dividends reduce cost basis
                 positions[ticker]['invested'] -= price
+            else:
+                logger.debug("Unsupported transaction type '%s' for ticker '%s'", transaction_type, ticker)
 
         self._positions = positions
+        logger.info("Calculated positions for %d tickers", len(positions))
         return positions
 
     def calculate_portfolio_value(self, manual_values: Dict[str, float]) -> pd.DataFrame:
@@ -89,6 +102,7 @@ class PortfolioManager:
             DataFrame with portfolio performance metrics
         """
         if not self._positions:
+            logger.warning("No positions available to calculate portfolio value")
             return pd.DataFrame()
 
         results = []
@@ -100,6 +114,7 @@ class PortfolioManager:
             # Get current price (from market or manual input)
             current_price = self._get_current_price(ticker, manual_values)
             if current_price is None or current_price == 0:
+                logger.warning("Skipping ticker '%s' due to missing current price", ticker)
                 continue
 
             # Get exchange rate
@@ -124,6 +139,7 @@ class PortfolioManager:
                 'Returns (%)': round(returns_pct, 2)
             })
 
+        logger.info("Calculated portfolio values for %d positions", len(results))
         return pd.DataFrame(results)
 
     def get_tickers_needing_manual_input(self) -> list:
@@ -134,6 +150,7 @@ class PortfolioManager:
             List of ticker symbols that couldn't be fetched from market data
         """
         if not self._positions:
+            logger.info("No positions available for manual input check")
             return []
 
         tickers_needing_input = []
@@ -146,6 +163,7 @@ class PortfolioManager:
             price = self.market_data.get_stock_price(ticker)
             if price is None:
                 tickers_needing_input.append(ticker)
+                logger.debug("Ticker '%s' requires manual price input", ticker)
 
         return tickers_needing_input
 
@@ -170,5 +188,6 @@ class PortfolioManager:
         # If not available, use manual value
         if price is None:
             price = manual_values.get(ticker, 0.0)
+            logger.debug("Using manual price for ticker '%s': %s", ticker, price)
 
         return price
