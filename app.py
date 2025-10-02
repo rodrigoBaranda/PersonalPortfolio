@@ -48,14 +48,14 @@ def main():
     # Determine sheet configuration (kept out of the sidebar)
     secrets_sheets = st.secrets.get("google_sheets", {})
     spreadsheet_id = (
-        st.secrets.get("google_spreadsheet_id")
-        or st.secrets.get("google_sheets_spreadsheet_id")
-        or secrets_sheets.get("spreadsheet_id")
+        st.secrets.get("google_sheet_spreadsheet_id")
+        or st.secrets.get("google_sheet_spreadsheet_id")
+        or secrets_sheets.get("google_spreadsheet_id")
     )
     sheet_name = (
         st.secrets.get("google_sheet_name")
-        or st.secrets.get("google_sheets_sheet_name")
-        or secrets_sheets.get("sheet_name", "Transactions")
+        or st.secrets.get("google_sheet_sheet_name")
+        or secrets_sheets.get("google_sheet_name", "Transactions")
     )
 
     if not spreadsheet_id:
