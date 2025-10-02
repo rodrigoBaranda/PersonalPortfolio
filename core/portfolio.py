@@ -30,29 +30,14 @@ class PortfolioManager:
         self.worksheet_name = worksheet_name
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
-        logger.info(
-            "PortfolioManager created for workbook '%s' and worksheet '%s'",
-            workbook_name,
-            worksheet_name
-        )
+        logger.info("PortfolioManager created for sheet '%s'", sheet_name)
 
     def load_transactions(self) -> pd.DataFrame:
         """Load transactions from Google Sheets"""
-        logger.info(
-            "Loading transactions for workbook '%s' and worksheet '%s'",
-            self.workbook_name,
-            self.worksheet_name
-        )
-        self._transactions_df = self.sheets_client.get_transactions(
-            self.workbook_name,
-            self.worksheet_name
-        )
+        logger.info("Loading transactions for sheet '%s'", self.sheet_name)
+        self._transactions_df = self.sheets_client.get_transactions(self.sheet_name)
         if self._transactions_df is None:
-            logger.warning(
-                "No transactions returned for workbook '%s' worksheet '%s'",
-                self.workbook_name,
-                self.worksheet_name
-            )
+            logger.warning("No transactions returned for sheet '%s'", self.sheet_name)
         else:
             logger.info("Loaded %d transactions", len(self._transactions_df))
         return self._transactions_df

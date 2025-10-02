@@ -73,6 +73,7 @@ def main():
         config['workbook_name'],
         config['worksheet_name']
     )
+    logger.info("PortfolioManager initialized for sheet '%s'", config['sheet_name'])
 
     # Render dashboard
     render_dashboard(portfolio_manager)
