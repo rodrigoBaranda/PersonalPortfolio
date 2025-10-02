@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 
-DEFAULT_WORKBOOK_NAME = "Transactions"
+DEFAULT_WORKBOOK_NAME = "Investments"
 WORKSHEET_NAME = "Transactions"
 
 # Environment variable that can be exported to set the workbook name.
