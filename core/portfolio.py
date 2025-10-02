@@ -15,43 +15,43 @@ logger = get_logger(__name__)
 class PortfolioManager:
     """Manages portfolio data and calculations"""
 
-    def __init__(self, credentials_dict: Dict, workbook_name: str, worksheet_name: str):
+    def __init__(self, credentials_dict: Dict, spreadsheet_id: str, sheet_name: str):
         """
         Initialize portfolio manager
 
         Args:
             credentials_dict: Google service account credentials
-            workbook_name: Name of the Google Sheet workbook
-            worksheet_name: Name of the worksheet/tab containing transactions
+            spreadsheet_id: Identifier of the Google Spreadsheet
+            sheet_name: Name of the worksheet/tab containing transactions
         """
         self.sheets_client = GoogleSheetsClient(credentials_dict)
         self.market_data = MarketDataProvider()
-        self.workbook_name = workbook_name
-        self.worksheet_name = worksheet_name
+        self.spreadsheet_id = spreadsheet_id
+        self.sheet_name = sheet_name
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
         logger.info(
-            "PortfolioManager created for workbook '%s' and worksheet '%s'",
-            workbook_name,
-            worksheet_name,
+            "PortfolioManager created for spreadsheet '%s' and sheet '%s'",
+            spreadsheet_id,
+            sheet_name,
         )
 
     def load_transactions(self) -> pd.DataFrame:
         """Load transactions from Google Sheets"""
         logger.info(
-            "Loading transactions for workbook '%s' / worksheet '%s'",
-            self.workbook_name,
-            self.worksheet_name,
+            "Loading transactions for spreadsheet '%s' / sheet '%s'",
+            self.spreadsheet_id,
+            self.sheet_name,
         )
         self._transactions_df = self.sheets_client.get_transactions(
-            self.workbook_name,
-            self.worksheet_name,
+            self.spreadsheet_id,
+            self.sheet_name,
         )
         if self._transactions_df is None:
             logger.warning(
-                "No transactions returned for workbook '%s' / worksheet '%s'",
-                self.workbook_name,
-                self.worksheet_name,
+                "No transactions returned for spreadsheet '%s' / sheet '%s'",
+                self.spreadsheet_id,
+                self.sheet_name,
             )
         else:
             logger.info("Loaded %d transactions", len(self._transactions_df))

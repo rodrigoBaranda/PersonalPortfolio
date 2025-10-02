@@ -28,44 +28,14 @@ def render_sidebar() -> Dict:
     with st.sidebar:
         st.header("⚙️ Configuration")
 
-        st.subheader("🔐 Google Sheets Credentials")
-        credentials_file = st.file_uploader(
-            "Upload your Service Account JSON:",
-            type=["json"],
-            help="Upload the JSON key file downloaded from Google Cloud Console > IAM & Admin > Service Accounts"
-        )
-
-        if credentials_file is not None:
-            st.caption(f"✅ Loaded credentials file: {credentials_file.name}")
-            logger.info("User uploaded credentials file '%s'", credentials_file.name)
-
-        st.subheader("📊 Sheet Configuration")
-        workbook_name = st.text_input(
-            "Google Sheet (Workbook) Name:",
-            value="Transactions",
-            help="Name of your Google Sheet workbook (file)"
-        )
-        logger.debug("Workbook name input: %s", workbook_name)
-
-        worksheet_name = st.text_input(
-            "Worksheet Name:",
-            value="Transactions",
-            help="Name of the worksheet/tab containing transaction data"
-        )
-        logger.debug("Worksheet name input: %s", worksheet_name)
-
-        st.markdown("---")
         refresh_button = st.button("🔄 Refresh Data", type="primary", use_container_width=True)
         if refresh_button:
             logger.info("User requested data refresh")
 
         st.markdown("---")
-        st.caption("💡 Your credentials are never stored or shared")
+        st.caption("💡 Google Sheets credentials are loaded from Streamlit secrets")
 
     return {
-        'credentials_file': credentials_file,
-        'workbook_name': workbook_name,
-        'worksheet_name': worksheet_name,
         'refresh_requested': refresh_button
     }
 

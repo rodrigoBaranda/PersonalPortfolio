@@ -1,10 +1,11 @@
-"""
-Google Sheets Data Provider
-Handles connection and data retrieval from Google Sheets
+"""Google Sheets Data Provider.
+
+Handles connection and data retrieval from Google Sheets.
 """
 import streamlit as st
-import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import pandas as pd
 from typing import Dict, Optional
 from utils import get_logger
@@ -26,22 +27,17 @@ class GoogleSheetsClient:
             credentials_dict: Service account credentials as dictionary
         """
         self.credentials_dict = credentials_dict
-        self._client: Optional[gspread.Client] = None
+        self._service = None
 
     @property
-    def client(self) -> gspread.Client:
-        """Get or create gspread client (lazy loading)"""
-        if self._client is None:
-            self._client = self._connect()
-        return self._client
+    def service(self):
+        """Get or create Google Sheets API service (lazy loading)."""
+        if self._service is None:
+            self._service = self._build_service()
+        return self._service
 
-    def _connect(self) -> Optional[gspread.Client]:
-        """
-        Establish connection to Google Sheets
-
-        Returns:
-            Authorized gspread client or None if connection fails
-        """
+    def _build_service(self):
+        """Create the Google Sheets API service client."""
         try:
             if not self.credentials_dict:
                 raise ValueError("Google service account credentials were not provided.")
@@ -50,60 +46,62 @@ class GoogleSheetsClient:
                 scopes=self.SCOPES
             )
             logger.info("Successfully authenticated with Google Sheets")
-            return gspread.authorize(creds)
+            return build('sheets', 'v4', credentials=creds)
         except Exception as e:
             st.error(f"❌ Error connecting to Google Sheets: {str(e)}")
             logger.exception("Failed to connect to Google Sheets")
             return None
 
-    def get_transactions(self, workbook_name: str, worksheet_name: str) -> Optional[pd.DataFrame]:
+    def get_transactions(self, spreadsheet_id: str, sheet_name: str) -> Optional[pd.DataFrame]:
         """
         Load transactions from Google Sheets
 
         Args:
-            workbook_name: Name of the Google Sheet workbook
-            worksheet_name: Name of the worksheet/tab with transactions
+            spreadsheet_id: ID of the Google Spreadsheet
+            sheet_name: Name of the worksheet/tab with transactions (or range reference)
 
         Returns:
             DataFrame with transaction data or None if loading fails
         """
         try:
-            client = self.client
-            if client is None:
-                raise ConnectionError("Google Sheets client is not available.")
+            service = self.service
+            if service is None:
+                raise ConnectionError("Google Sheets service is not available.")
 
             logger.info(
-                "Fetching worksheet '%s' from workbook '%s'",
-                worksheet_name,
-                workbook_name,
+                "Fetching sheet '%s' from spreadsheet '%s'",
+                sheet_name,
+                spreadsheet_id,
             )
-            sheet = client.open(workbook_name).worksheet(worksheet_name)
-            data = sheet.get_all_records()
-            df = pd.DataFrame(data)
 
-            if df.empty:
+            result = (
+                service.spreadsheets()
+                .values()
+                .get(spreadsheetId=spreadsheet_id, range=sheet_name)
+                .execute()
+            )
+            values = result.get('values', [])
+
+            if not values:
                 st.warning("⚠️ No transactions found in the sheet.")
                 logger.warning(
-                    "Worksheet '%s' in workbook '%s' is empty",
-                    worksheet_name,
-                    workbook_name,
+                    "Sheet '%s' in spreadsheet '%s' returned no data",
+                    sheet_name,
+                    spreadsheet_id,
                 )
                 return None
 
+            headers, *rows = values
+            df = pd.DataFrame(rows, columns=headers)
+
             logger.info("Retrieved %d transactions from Google Sheets", len(df))
             return df
-        except gspread.exceptions.SpreadsheetNotFound:
-            st.error(f"❌ Google Sheet '{workbook_name}' not found. Please check the name.")
-            logger.exception("Spreadsheet '%s' not found", workbook_name)
-            return None
-        except gspread.exceptions.WorksheetNotFound:
-            st.error(
-                f"❌ Worksheet '{worksheet_name}' not found in '{workbook_name}'."
-            )
+        except HttpError as error:
+            st.error(f"❌ Google Sheets API error: {error}")
             logger.exception(
-                "Worksheet '%s' missing in '%s'",
-                worksheet_name,
-                workbook_name,
+                "Google Sheets API error for spreadsheet '%s' / sheet '%s'",
+                spreadsheet_id,
+                sheet_name,
             )
             return None
         except Exception as e:
