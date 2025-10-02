@@ -54,12 +54,13 @@ class GoogleSheetsClient:
             logger.exception("Failed to connect to Google Sheets")
             return None
 
-    def get_transactions(self, sheet_name: str) -> Optional[pd.DataFrame]:
+    def get_transactions(self, workbook_name: str, worksheet_name: str) -> Optional[pd.DataFrame]:
         """
         Load transactions from Google Sheets
 
         Args:
-            sheet_name: Name of the Google Sheet
+            workbook_name: Name of the Google Sheet workbook
+            worksheet_name: Name of the worksheet/tab with transactions
 
         Returns:
             DataFrame with transaction data or None if loading fails

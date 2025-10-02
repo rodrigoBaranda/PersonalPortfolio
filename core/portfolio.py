@@ -15,17 +15,19 @@ logger = get_logger(__name__)
 class PortfolioManager:
     """Manages portfolio data and calculations"""
 
-    def __init__(self, credentials_dict: Dict, sheet_name: str):
+    def __init__(self, credentials_dict: Dict, workbook_name: str, worksheet_name: str):
         """
         Initialize portfolio manager
 
         Args:
             credentials_dict: Google service account credentials
-            sheet_name: Name of the Google Sheet
+            workbook_name: Name of the Google Sheet workbook
+            worksheet_name: Name of the worksheet/tab containing transactions
         """
         self.sheets_client = GoogleSheetsClient(credentials_dict)
         self.market_data = MarketDataProvider()
-        self.sheet_name = sheet_name
+        self.workbook_name = workbook_name
+        self.worksheet_name = worksheet_name
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
         logger.info("PortfolioManager created for sheet '%s'", sheet_name)

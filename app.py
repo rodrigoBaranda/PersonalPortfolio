@@ -65,7 +65,13 @@ def main():
     # Initialize portfolio manager
     portfolio_manager = PortfolioManager(
         credentials_dict=credentials_dict,
-        sheet_name=config['sheet_name']
+        workbook_name=config['workbook_name'],
+        worksheet_name=config['worksheet_name']
+    )
+    logger.info(
+        "PortfolioManager initialized for workbook '%s' and worksheet '%s'",
+        config['workbook_name'],
+        config['worksheet_name']
     )
     logger.info("PortfolioManager initialized for sheet '%s'", config['sheet_name'])
 

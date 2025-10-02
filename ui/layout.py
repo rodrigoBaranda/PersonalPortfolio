@@ -40,10 +40,17 @@ def render_sidebar() -> Dict:
             logger.info("User uploaded credentials file '%s'", credentials_file.name)
 
         st.subheader("📊 Sheet Configuration")
-        sheet_name = st.text_input(
-            "Google Sheet Name:",
+        workbook_name = st.text_input(
+            "Google Sheet (Workbook) Name:",
             value="Transactions",
-            help="Name of your Google Sheet (not the tab name)"
+            help="Name of your Google Sheet workbook (file)"
+        )
+        logger.debug("Workbook name input: %s", workbook_name)
+
+        worksheet_name = st.text_input(
+            "Worksheet Name:",
+            value="Transactions",
+            help="Name of the worksheet/tab containing transaction data"
         )
         logger.debug("Sheet name input: %s", sheet_name)
 
@@ -57,7 +64,8 @@ def render_sidebar() -> Dict:
 
     return {
         'credentials_file': credentials_file,
-        'sheet_name': sheet_name,
+        'workbook_name': workbook_name,
+        'worksheet_name': worksheet_name,
         'refresh_requested': refresh_button
     }
 
