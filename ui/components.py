@@ -6,10 +6,15 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from typing import List
+from utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def show_setup_instructions():
     """Display setup instructions when credentials are not provided"""
+    logger.info("Displaying setup instructions")
     st.info("👈 Please upload your Google Sheets service account JSON file in the sidebar to get started.")
 
     st.markdown("""
@@ -53,6 +58,7 @@ def show_setup_instructions():
             'Date': ['2024-01-15', '2024-02-01', '2023-12-01']
         }
         st.dataframe(pd.DataFrame(example_data), use_container_width=True)
+        logger.debug("Rendered example transactions table")
 
 
 def render_transactions_expander(transactions_df: pd.DataFrame):
@@ -62,6 +68,7 @@ def render_transactions_expander(transactions_df: pd.DataFrame):
     Args:
         transactions_df: DataFrame with transaction data
     """
+    logger.info("Rendering transactions expander with %d rows", len(transactions_df))
     with st.expander("📋 View Raw Transactions"):
         st.dataframe(transactions_df, use_container_width=True)
         st.caption(f"Total transactions: {len(transactions_df)}")
@@ -74,6 +81,7 @@ def render_manual_input_section(tickers: List[str]):
     Args:
         tickers: List of ticker symbols needing manual input
     """
+    logger.info("Rendering manual input section for %d tickers", len(tickers))
     st.sidebar.markdown("---")
     st.sidebar.subheader("💼 Manual Value Input")
     st.sidebar.caption("Enter current values for investments without market data:")
@@ -90,6 +98,7 @@ def render_manual_input_section(tickers: List[str]):
             help=f"Current value per unit for {ticker}"
         )
         st.session_state.manual_values[ticker] = new_value
+        logger.debug("Manual value set for %s: %s", ticker, new_value)
 
 
 def render_summary_metrics(portfolio_df: pd.DataFrame):
@@ -99,6 +108,7 @@ def render_summary_metrics(portfolio_df: pd.DataFrame):
     Args:
         portfolio_df: DataFrame with portfolio performance data
     """
+    logger.info("Rendering summary metrics for %d positions", len(portfolio_df))
     total_invested = portfolio_df['Invested (EUR)'].sum()
     total_value = portfolio_df['Current Value (EUR)'].sum()
     total_returns = portfolio_df['Returns (EUR)'].sum()
@@ -139,6 +149,7 @@ def render_portfolio_table(portfolio_df: pd.DataFrame):
     Args:
         portfolio_df: DataFrame with portfolio performance data
     """
+    logger.info("Rendering portfolio table with %d rows", len(portfolio_df))
     st.subheader("📊 Portfolio Overview")
 
     # Apply conditional formatting
@@ -173,3 +184,4 @@ def render_portfolio_table(portfolio_df: pd.DataFrame):
         mime="text/csv",
         use_container_width=False
     )
+    logger.debug("Portfolio CSV download ready")
