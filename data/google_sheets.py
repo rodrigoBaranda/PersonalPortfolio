@@ -43,6 +43,8 @@ class GoogleSheetsClient:
             Authorized gspread client or None if connection fails
         """
         try:
+            if not self.credentials_dict:
+                raise ValueError("Google service account credentials were not provided.")
             creds = Credentials.from_service_account_info(
                 self.credentials_dict,
                 scopes=self.SCOPES
@@ -66,25 +68,43 @@ class GoogleSheetsClient:
             DataFrame with transaction data or None if loading fails
         """
         try:
-            logger.info("Fetching transactions worksheet from '%s'", sheet_name)
-            sheet = self.client.open(sheet_name).worksheet("Transactions")
+            client = self.client
+            if client is None:
+                raise ConnectionError("Google Sheets client is not available.")
+
+            logger.info(
+                "Fetching worksheet '%s' from workbook '%s'",
+                worksheet_name,
+                workbook_name,
+            )
+            sheet = client.open(workbook_name).worksheet(worksheet_name)
             data = sheet.get_all_records()
             df = pd.DataFrame(data)
 
             if df.empty:
                 st.warning("⚠️ No transactions found in the sheet.")
-                logger.warning("Transactions worksheet in '%s' is empty", sheet_name)
+                logger.warning(
+                    "Worksheet '%s' in workbook '%s' is empty",
+                    worksheet_name,
+                    workbook_name,
+                )
                 return None
 
             logger.info("Retrieved %d transactions from Google Sheets", len(df))
             return df
         except gspread.exceptions.SpreadsheetNotFound:
-            st.error(f"❌ Google Sheet '{sheet_name}' not found. Please check the name.")
-            logger.exception("Spreadsheet '%s' not found", sheet_name)
+            st.error(f"❌ Google Sheet '{workbook_name}' not found. Please check the name.")
+            logger.exception("Spreadsheet '%s' not found", workbook_name)
             return None
         except gspread.exceptions.WorksheetNotFound:
-            st.error(f"❌ Worksheet 'Transactions' not found in '{sheet_name}'.")
-            logger.exception("Worksheet 'Transactions' missing in '%s'", sheet_name)
+            st.error(
+                f"❌ Worksheet '{worksheet_name}' not found in '{workbook_name}'."
+            )
+            logger.exception(
+                "Worksheet '%s' missing in '%s'",
+                worksheet_name,
+                workbook_name,
+            )
             return None
         except Exception as e:
             st.error(f"❌ Error loading transactions: {str(e)}")

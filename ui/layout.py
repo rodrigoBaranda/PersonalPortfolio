@@ -52,7 +52,7 @@ def render_sidebar() -> Dict:
             value="Transactions",
             help="Name of the worksheet/tab containing transaction data"
         )
-        logger.debug("Sheet name input: %s", sheet_name)
+        logger.debug("Worksheet name input: %s", worksheet_name)
 
         st.markdown("---")
         refresh_button = st.button("🔄 Refresh Data", type="primary", use_container_width=True)
