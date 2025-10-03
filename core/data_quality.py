@@ -57,12 +57,7 @@ DEFAULT_CONFIG = DataQualityConfig(
         "SELL": "Sell",
         "DIV": "Dividend",
         "DIVIDEND": "Dividend",
-        "DIVIDEND REINVESTMENT": "Dividend Reinvestment",
-        "DIVIDEND REINVEST": "Dividend Reinvestment",
-        "DIVIDEND_REINVESTMENT": "Dividend Reinvestment",
         "DIVIDEND-REINVESTMENT": "Dividend Reinvestment",
-        "REINVEST DIVIDEND": "Dividend Reinvestment",
-        "REINVESTMENT": "Dividend Reinvestment",
         "INTEREST": "Interest",
         "PENSION": "Pension",
     },
@@ -80,7 +75,7 @@ def _to_snake_case(value: str) -> str:
     )
 
 
-def clean_transactions(
+def  clean_transactions(
     transactions: Optional[pd.DataFrame],
     config: DataQualityConfig = DEFAULT_CONFIG,
 ) -> pd.DataFrame:
