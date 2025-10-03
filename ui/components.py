@@ -5,7 +5,7 @@ Reusable UI components for the Streamlit application
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
 from utils import get_logger
 
 
