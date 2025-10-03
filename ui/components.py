@@ -152,10 +152,24 @@ def render_weighted_average_cost_summary(
         if "Ticker" not in manual_editor_df.columns:
             manual_editor_df.insert(1, "Ticker", manual_editor_df["Name"])
 
+        def _apply_price_to_summary(ticker_value: str, name_value: str, price_value: float):
+            if pd.isna(price_value):
+                return
+            if "Ticker" in summary_df.columns:
+                summary_df.loc[
+                    summary_df["Ticker"] == ticker_value, "Current Price (EUR)"
+                ] = float(price_value)
+            else:
+                summary_df.loc[
+                    summary_df["Name"] == name_value, "Current Price (EUR)"
+                ] = float(price_value)
+
         for idx, row in manual_editor_df.iterrows():
             ticker = row.get("Ticker")
             if ticker in manual_values:
-                manual_editor_df.at[idx, "Current Price (EUR)"] = manual_values.get(ticker)
+                manual_price = manual_values.get(ticker)
+                manual_editor_df.at[idx, "Current Price (EUR)"] = manual_price
+                _apply_price_to_summary(ticker, row.get("Name"), manual_price)
 
         st.markdown(
             """
@@ -170,46 +184,44 @@ def render_weighted_average_cost_summary(
             unsafe_allow_html=True,
         )
 
-        edited_manual_df = st.data_editor(
-            manual_editor_df,
-            column_config={
-                "Name": st.column_config.TextColumn("Name", disabled=True),
-                "Ticker": st.column_config.TextColumn(
-                    "Ticker",
-                    disabled=True,
-                    help="Identifier used for manual price overrides.",
-                ),
-                "Current Price (EUR)": st.column_config.NumberColumn(
-                    "Current Price (EUR)",
-                    help="Provide the latest price per share in EUR.",
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    required=True,
-                ),
-            },
-            hide_index=True,
-            key="summary_price_editor",
-            num_rows="fixed",
-        )
+        with st.form("manual_price_form"):
+            edited_manual_df = st.data_editor(
+                manual_editor_df,
+                column_config={
+                    "Name": st.column_config.TextColumn("Name", disabled=True),
+                    "Ticker": st.column_config.TextColumn(
+                        "Ticker",
+                        disabled=True,
+                        help="Identifier used for manual price overrides.",
+                    ),
+                    "Current Price (EUR)": st.column_config.NumberColumn(
+                        "Current Price (EUR)",
+                        help="Provide the latest price per share in EUR.",
+                        min_value=0.0,
+                        step=0.01,
+                        format="%.2f",
+                        required=True,
+                    ),
+                },
+                hide_index=True,
+                key="summary_price_editor",
+                num_rows="fixed",
+            )
+            submitted = st.form_submit_button("Save Price Updates")
 
-        for _, row in edited_manual_df.iterrows():
-            ticker = row.get("Ticker")
-            price = row.get("Current Price (EUR)")
-            if not ticker:
-                continue
-            if pd.notna(price) and float(price) > 0:
-                manual_values[ticker] = float(price)
-                if "Ticker" in summary_df.columns:
-                    summary_df.loc[
-                        summary_df["Ticker"] == ticker, "Current Price (EUR)"
-                    ] = float(price)
-                else:
-                    summary_df.loc[
-                        summary_df["Name"] == row.get("Name"), "Current Price (EUR)"
-                    ] = float(price)
-            elif ticker in manual_values:
-                manual_values.pop(ticker)
+        if submitted:
+            for _, row in edited_manual_df.iterrows():
+                ticker = row.get("Ticker")
+                price = row.get("Current Price (EUR)")
+                if not ticker:
+                    continue
+                if pd.notna(price) and float(price) > 0:
+                    manual_values[ticker] = float(price)
+                    _apply_price_to_summary(ticker, row.get("Name"), price)
+                elif ticker in manual_values:
+                    manual_values.pop(ticker)
+
+            st.success("Manual price updates saved.")
 
     formatted_df = summary_df.style.format({
         "Purchased Times": "{:.0f}",
@@ -223,12 +235,22 @@ def render_weighted_average_cost_summary(
 
     highlight_indices = set(summary_df.index[manual_candidate_mask])
 
-    def _highlight_missing(row: pd.Series):
-        if row.name in highlight_indices:
-            return ["background-color: #f1f3f5"] * len(row)
-        return [""] * len(row)
+    def _highlight_row(row: pd.Series):
+        styles = [""] * len(row)
 
-    formatted_df = formatted_df.apply(_highlight_missing, axis=1)
+        status = row.get("Position Status")
+        if isinstance(status, str) and status.strip().lower() == "closed":
+            styles = ["background-color: #fbf5ff"] * len(row)
+
+        if row.name in highlight_indices:
+            styles = [
+                f"{style}; background-color: #f1f3f5" if style else "background-color: #f1f3f5"
+                for style in styles
+            ]
+
+        return styles
+
+    formatted_df = formatted_df.apply(_highlight_row, axis=1)
 
     st.dataframe(formatted_df, use_container_width=True)
     st.caption("Summary combines buy and sell transactions and is sorted by current open amount in EUR.")
