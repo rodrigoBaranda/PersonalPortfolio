@@ -395,12 +395,14 @@ class PortfolioManager:
 
             current_price = None
             current_value_eur = np.nan
+            current_price_eur = np.nan
 
             if remaining_qty > 0 and ticker:
                 current_price = self._get_current_price(ticker, manual_values)
                 if current_price is not None:
                     exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
-                    current_value_eur = remaining_qty * current_price * exchange_rate
+                    current_price_eur = current_price * exchange_rate
+                    current_value_eur = remaining_qty * current_price_eur
                 else:
                     logger.debug(
                         "Skipping current value for '%s' due to missing market data", ticker
@@ -417,6 +419,7 @@ class PortfolioManager:
                 total_value_eur = np.nan
 
             profit_pct = np.nan
+            profit_eur = np.nan
             if invested_eur > 0 and not pd.isna(total_value_eur):
                 profit_eur = total_value_eur - invested_eur
                 profit_pct = (profit_eur / invested_eur) * 100
@@ -431,7 +434,9 @@ class PortfolioManager:
                     "Name": name,
                     "Weighted Avg Buy Price (EUR)": _round_or_nan(avg_buy),
                     "Weighted Avg Sell Price (EUR)": _round_or_nan(avg_sell),
+                    "Current Price (EUR)": _round_or_nan(current_price_eur),
                     "Current Value (EUR)": _round_or_nan(current_value_eur),
+                    "Profit (EUR)": _round_or_nan(profit_eur),
                     "Profit (%)": _round_or_nan(profit_pct),
                 }
             )

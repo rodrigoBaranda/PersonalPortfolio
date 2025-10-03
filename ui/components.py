@@ -194,20 +194,69 @@ def render_stock_view(stock_view_df: pd.DataFrame):
         st.info("ℹ️ No stock data available to display.")
         return
 
-    styled_df = stock_view_df.style.format(
-        {
-            "Weighted Avg Buy Price (EUR)": "€{:,.2f}",
-            "Weighted Avg Sell Price (EUR)": "€{:,.2f}",
-            "Current Value (EUR)": "€{:,.2f}",
-            "Profit (%)": "{:+.2f}%",
-        },
-        na_rep="—",
+    available_names = stock_view_df["Name"].dropna().unique()
+    if len(available_names) == 0:
+        logger.info("No valid stock names present in stock view data frame")
+        st.info("ℹ️ No stock data available to display.")
+        return
+
+    selected_name = st.selectbox(
+        "Select a stock to review",
+        options=sorted(available_names),
+        help="Choose a stock to see its weighted averages, current price and profit.",
     )
 
-    st.dataframe(styled_df, use_container_width=True)
-    st.caption(
-        "Includes realized and unrealized performance using weighted average prices and current values for open positions."
-    )
+    selected_row = stock_view_df[stock_view_df["Name"] == selected_name]
+    if selected_row.empty:
+        logger.warning("Selected stock '%s' not found in data frame", selected_name)
+        st.info("ℹ️ Unable to display details for the selected stock.")
+        return
+
+    selected_row = selected_row.iloc[0]
+
+    def _format_currency(value: float) -> str:
+        if pd.isna(value):
+            return "—"
+        return f"€{value:,.2f}"
+
+    def _format_percentage(value: float) -> str:
+        if pd.isna(value):
+            return "—"
+        return f"{value:+.2f}%"
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "Weighted Avg Buy Price",
+            _format_currency(selected_row.get("Weighted Avg Buy Price (EUR)")),
+        )
+
+    with col2:
+        st.metric(
+            "Current Price",
+            _format_currency(selected_row.get("Current Price (EUR)")),
+        )
+
+    with col3:
+        st.metric(
+            "Weighted Avg Sell Price",
+            _format_currency(selected_row.get("Weighted Avg Sell Price (EUR)")),
+        )
+        st.metric(
+            "Profit",
+            _format_currency(selected_row.get("Profit (EUR)")),
+            _format_percentage(selected_row.get("Profit (%)")),
+        )
+
+    if pd.isna(selected_row.get("Current Price (EUR)")):
+        st.caption(
+            "Current price unavailable — add a manual price or ensure market data is accessible."
+        )
+    else:
+        st.caption(
+            "Prices are displayed per share in EUR. Profit combines realized and unrealized performance."
+        )
 
 
 def render_manual_input_section(tickers: List[str]):
