@@ -73,45 +73,9 @@ class PortfolioManager:
         Returns:
             Dictionary mapping ticker to position data
         """
-        if self._transactions_df is None or self._transactions_df.empty:
-            logger.warning("Cannot calculate positions without transactions")
-            return {}
-
-        positions = {}
-
-        for _, row in self._transactions_df.iterrows():
-            ticker = self._extract_ticker(row)
-            if not ticker:
-                logger.debug("Skipping row without ticker: %s", row.to_dict())
-                continue
-
-            transaction_type = str(row.get('Type', row.get('type', ''))).upper()
-            quantity = float(row.get('Quantity', row.get('quantity', 0)))
-            price = float(row.get('Price', row.get('price', 0)))
-            currency = row.get('Currency', row.get('currency', 'EUR'))
-
-            if ticker not in positions:
-                positions[ticker] = {
-                    'quantity': 0,
-                    'invested': 0,
-                    'currency': currency
-                }
-
-            if transaction_type in ['BUY', 'PURCHASE']:
-                positions[ticker]['quantity'] += quantity
-                positions[ticker]['invested'] += quantity * price
-            elif transaction_type == 'SELL':
-                positions[ticker]['quantity'] -= quantity
-                positions[ticker]['invested'] -= quantity * price
-            elif transaction_type == 'DIVIDEND':
-                # Dividends reduce cost basis
-                positions[ticker]['invested'] -= price
-            else:
-                logger.debug("Unsupported transaction type '%s' for ticker '%s'", transaction_type, ticker)
-
-        self._positions = positions
-        logger.info("Calculated positions for %d tickers", len(positions))
-        return positions
+        logger.info("Position calculation not implemented; returning empty result")
+        self._positions = {}
+        return self._positions
 
     def calculate_portfolio_value(self, manual_values: Dict[str, float]) -> pd.DataFrame:
         """
@@ -194,22 +158,17 @@ class PortfolioManager:
         return row.get('Ticker', row.get('ticker', row.get('Symbol', '')))
 
     def _get_current_price(self, ticker: str, manual_values: Dict[str, float]) -> Optional[float]:
-        """
-        Get current price for a ticker
-
-        Args:
-            ticker: Ticker symbol
-            manual_values: Dictionary of manual price inputs
-
-        Returns:
-            Current price or None if not available
-        """
-        # Try to get from market data
+        """Resolve the most appropriate price for the given ticker."""
         price = self.market_data.get_stock_price(ticker)
+        if price is not None:
+            logger.debug("Fetched market price for ticker '%s': %s", ticker, price)
+            return price
 
-        # If not available, use manual value
-        if price is None:
-            price = manual_values.get(ticker, 0.0)
-            logger.debug("Using manual price for ticker '%s': %s", ticker, price)
+        if ticker in manual_values:
+            manual_price = manual_values[ticker]
+            logger.debug("Using manual price for ticker '%s': %s", ticker, manual_price)
+            return manual_price
 
-        return price
+        logger.warning("No price available for ticker '%s'", ticker)
+        return None
+
