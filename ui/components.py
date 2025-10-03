@@ -4,6 +4,7 @@ Reusable UI components for the Streamlit application
 """
 from datetime import datetime
 import html
+import textwrap
 
 import pandas as pd
 import streamlit as st
@@ -396,70 +397,72 @@ def render_stock_view(stock_view_df: pd.DataFrame):
         return
 
     st.markdown(
-        """
-        <style>
-        .stock-section {
-            border-radius: 1rem;
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-        }
-        .stock-section.open {
-            background: linear-gradient(135deg, #eef8ff 0%, #f6fbff 100%);
-        }
-        .stock-section.closed {
-            background: linear-gradient(135deg, #f7f1ff 0%, #fbf5ff 100%);
-        }
-        .stock-section h4 {
-            margin-top: 0;
-        }
-        .stock-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        .stock-card {
-            background: white;
-            border-radius: 0.85rem;
-            padding: 1rem;
-            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        .stock-card.closed {
-            background: #fff8ff;
-        }
-        .stock-card__header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-        }
-        .stock-card__label {
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #6b7280;
-        }
-        .stock-card__value {
-            font-weight: 600;
-            color: #111827;
-        }
-        .stock-card__metric {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.95rem;
-        }
-        .stock-card__profit-positive {
-            color: #0f9d58;
-        }
-        .stock-card__profit-negative {
-            color: #d93025;
-        }
-        </style>
-        """,
+        textwrap.dedent(
+            """
+            <style>
+            .stock-section {
+                border-radius: 1rem;
+                padding: 1.25rem;
+                margin-bottom: 1.5rem;
+            }
+            .stock-section.open {
+                background: linear-gradient(135deg, #eef8ff 0%, #f6fbff 100%);
+            }
+            .stock-section.closed {
+                background: linear-gradient(135deg, #f7f1ff 0%, #fbf5ff 100%);
+            }
+            .stock-section h4 {
+                margin-top: 0;
+            }
+            .stock-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                gap: 1rem;
+                margin-top: 1rem;
+            }
+            .stock-card {
+                background: white;
+                border-radius: 0.85rem;
+                padding: 1rem;
+                box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            .stock-card.closed {
+                background: #fff8ff;
+            }
+            .stock-card__header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+            }
+            .stock-card__label {
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #6b7280;
+            }
+            .stock-card__value {
+                font-weight: 600;
+                color: #111827;
+            }
+            .stock-card__metric {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 0.95rem;
+            }
+            .stock-card__profit-positive {
+                color: #0f9d58;
+            }
+            .stock-card__profit-negative {
+                color: #d93025;
+            }
+            </style>
+            """
+        ),
         unsafe_allow_html=True,
     )
 
@@ -483,34 +486,36 @@ def render_stock_view(stock_view_df: pd.DataFrame):
             elif profit_number < 0:
                 profit_class = "stock-card__profit-negative"
 
-            card_html = f"""
-            <div class="stock-card {'closed' if stock_row.get('Position Status') == 'Closed' else ''}">
-                <div class="stock-card__header">
-                    <span>{html.escape(str(stock_row.get('Name', '—')))}</span>
-                    <span class="stock-card__label">{html.escape(str(stock_row.get('Position Status', '—')))}</span>
+            card_html = textwrap.dedent(
+                f"""
+                <div class="stock-card {'closed' if stock_row.get('Position Status') == 'Closed' else ''}">
+                    <div class="stock-card__header">
+                        <span>{html.escape(str(stock_row.get('Name', '—')))}</span>
+                        <span class="stock-card__label">{html.escape(str(stock_row.get('Position Status', '—')))}</span>
+                    </div>
+                    <div class="stock-card__metric">
+                        <span class="stock-card__label">Profit</span>
+                        <span class="stock-card__value {profit_class}">{html.escape(profit_value)} ({html.escape(profit_pct_value)})</span>
+                    </div>
+                    <div class="stock-card__metric">
+                        <span class="stock-card__label">Avg Buy</span>
+                        <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Buy Price (EUR)')))}</span>
+                    </div>
+                    <div class="stock-card__metric">
+                        <span class="stock-card__label">Avg Sell</span>
+                        <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Sell Price (EUR)')))}</span>
+                    </div>
+                    <div class="stock-card__metric">
+                        <span class="stock-card__label">Current Price</span>
+                        <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Price (EUR)')))}</span>
+                    </div>
+                    <div class="stock-card__metric">
+                        <span class="stock-card__label">Current Value</span>
+                        <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Value (EUR)')))}</span>
+                    </div>
                 </div>
-                <div class="stock-card__metric">
-                    <span class="stock-card__label">Profit</span>
-                    <span class="stock-card__value {profit_class}">{html.escape(profit_value)} ({html.escape(profit_pct_value)})</span>
-                </div>
-                <div class="stock-card__metric">
-                    <span class="stock-card__label">Avg Buy</span>
-                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Buy Price (EUR)')))}</span>
-                </div>
-                <div class="stock-card__metric">
-                    <span class="stock-card__label">Avg Sell</span>
-                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Sell Price (EUR)')))}</span>
-                </div>
-                <div class="stock-card__metric">
-                    <span class="stock-card__label">Current Price</span>
-                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Price (EUR)')))}</span>
-                </div>
-                <div class="stock-card__metric">
-                    <span class="stock-card__label">Current Value</span>
-                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Value (EUR)')))}</span>
-                </div>
-            </div>
-            """
+                """
+            ).strip()
             cards_html.append(card_html)
 
         st.markdown(
