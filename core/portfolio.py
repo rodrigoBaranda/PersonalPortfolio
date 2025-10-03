@@ -392,46 +392,34 @@ class PortfolioManager:
             avg_sell = row.get("weighted_avg_sell_price_eur")
 
             remaining_qty = max(buy_qty - sell_qty, 0.0)
-            realized_value_eur = float(row.get("sell_amount_eur", 0.0))
 
-            current_price_eur = np.nan
-            unrealized_value_eur = np.nan
+            current_price = None
+            current_value_eur = np.nan
 
             if remaining_qty > 0 and ticker:
-                market_price = self._get_current_price(ticker, manual_values)
-                if market_price is not None:
+                current_price = self._get_current_price(ticker, manual_values)
+                if current_price is not None:
                     exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
-                    current_price_eur = float(market_price) * exchange_rate
-                    unrealized_value_eur = remaining_qty * current_price_eur
+                    current_value_eur = remaining_qty * current_price * exchange_rate
                 else:
                     logger.debug(
-                        "Skipping current price for '%s' due to missing market data", ticker
+                        "Skipping current value for '%s' due to missing market data", ticker
                     )
             elif remaining_qty <= 0:
-                unrealized_value_eur = 0.0
+                current_value_eur = 0.0
 
-            if np.isnan(unrealized_value_eur) and remaining_qty <= 0:
-                # Closed positions with no market price simply have no unrealized component
-                unrealized_value_eur = 0.0
+            realized_value_eur = float(row.get("sell_amount_eur", 0.0))
 
             total_value_eur = realized_value_eur
-            if not pd.isna(unrealized_value_eur):
-                total_value_eur += unrealized_value_eur
+            if not pd.isna(current_value_eur):
+                total_value_eur += current_value_eur
             elif remaining_qty > 0:
                 total_value_eur = np.nan
 
-            profit_eur = np.nan
             profit_pct = np.nan
             if invested_eur > 0 and not pd.isna(total_value_eur):
                 profit_eur = total_value_eur - invested_eur
                 profit_pct = (profit_eur / invested_eur) * 100
-
-            if remaining_qty > 0 and sell_qty > 0:
-                position_status = "Partially Closed"
-            elif remaining_qty > 0:
-                position_status = "Open"
-            else:
-                position_status = "Closed"
 
             def _round_or_nan(value: Optional[float]) -> float:
                 if value is None or pd.isna(value):
@@ -443,14 +431,8 @@ class PortfolioManager:
                     "Name": name,
                     "Weighted Avg Buy Price (EUR)": _round_or_nan(avg_buy),
                     "Weighted Avg Sell Price (EUR)": _round_or_nan(avg_sell),
-                    "Current Price (EUR)": _round_or_nan(current_price_eur),
+                    "Current Value (EUR)": _round_or_nan(current_value_eur),
                     "Profit (%)": _round_or_nan(profit_pct),
-                    "Profit (EUR)": _round_or_nan(profit_eur),
-                    "Realized Value (EUR)": _round_or_nan(realized_value_eur),
-                    "Unrealized Value (EUR)": _round_or_nan(unrealized_value_eur),
-                    "Total Value (EUR)": _round_or_nan(total_value_eur),
-                    "Shares Outstanding": _round_or_nan(remaining_qty),
-                    "Position Status": position_status,
                 }
             )
 
