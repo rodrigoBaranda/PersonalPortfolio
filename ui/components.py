@@ -87,7 +87,9 @@ def render_transactions_table(transactions_df: pd.DataFrame):
     st.caption(f"Total transactions: {len(transactions_df)}")
 
 
-def render_weighted_average_cost_summary(summary_df: pd.DataFrame):
+def render_weighted_average_cost_summary(
+    summary_df: pd.DataFrame, transactions_df: pd.DataFrame
+):
     """Render portfolio summary by company."""
     st.subheader("📘 Portfolio Overview")
 
@@ -102,11 +104,85 @@ def render_weighted_average_cost_summary(summary_df: pd.DataFrame):
         "Total Invested (EUR)": "€{:,.2f}",
         "Weighted Avg Buy Price (EUR)": "€{:,.2f}",
         "Weighted Avg Sell Price (EUR)": "€{:,.2f}",
+        "current_value": "€{:,.2f}",
         "Current Open Amount EUR": "€{:,.2f}",
     })
 
     st.dataframe(formatted_df, use_container_width=True)
     st.caption("Summary combines buy and sell transactions and is sorted by current open amount in EUR.")
+
+    if transactions_df is None or transactions_df.empty:
+        logger.info("Skipping monthly charts because transactions data is unavailable")
+        st.info("ℹ️ Add dated transactions to explore income and contribution trends.")
+        return
+
+    if "date" not in transactions_df.columns or transactions_df["date"].isna().all():
+        logger.info("Skipping monthly charts because transaction dates are missing")
+        st.info("ℹ️ Add dates to your transactions to unlock monthly charts.")
+        return
+
+    transactions_with_dates = transactions_df[transactions_df["date"].notna()].copy()
+    transactions_with_dates["date"] = pd.to_datetime(transactions_with_dates["date"])
+
+    def prepare_monthly_series(df: pd.DataFrame, transaction_type: str) -> pd.DataFrame:
+        subset = df[df["type"] == transaction_type].copy()
+        if subset.empty:
+            return pd.DataFrame(columns=["Month", "Amount"])
+
+        if "gross_amount_eur" not in subset.columns:
+            logger.info("Missing gross_amount_eur column for %s chart", transaction_type)
+            return pd.DataFrame(columns=["Month", "Amount"])
+
+        subset = subset[subset["gross_amount_eur"].notna()]
+        if subset.empty:
+            return pd.DataFrame(columns=["Month", "Amount"])
+
+        subset["Month"] = subset["date"].dt.to_period("M").dt.to_timestamp()
+        monthly = (
+            subset.groupby("Month")["gross_amount_eur"].sum().reset_index(name="Amount")
+        )
+        monthly = monthly.sort_values("Month")
+        monthly["Month"] = monthly["Month"].dt.strftime("%Y-%m")
+        return monthly
+
+    def render_monthly_chart(title: str, monthly_df: pd.DataFrame, total_label: str):
+        st.markdown(f"#### {title}")
+        if monthly_df.empty:
+            st.caption("No data available yet.")
+            return
+
+        chart_data = monthly_df.set_index("Month")
+        st.bar_chart(chart_data)
+        total_value = monthly_df["Amount"].sum()
+        st.caption(f"{total_label}: €{total_value:,.2f}")
+
+    st.markdown("---")
+    st.markdown("### 📈 Income & Contributions Trends")
+
+    interests_df = prepare_monthly_series(transactions_with_dates, "Interest")
+    pension_df = prepare_monthly_series(transactions_with_dates, "Pension")
+    dividends_df = prepare_monthly_series(transactions_with_dates, "Dividend")
+
+    render_monthly_chart("Monthly Interest", interests_df, "Total Interest")
+
+    st.markdown("#### Monthly Pension Contributions")
+    pension_profit_dkk = st.number_input(
+        "Pension contribution profit (DKK)",
+        min_value=0.0,
+        value=0.0,
+        step=100.0,
+        format="%.2f",
+        help="Enter your profit in DKK to keep track of pension performance.",
+    )
+    if pension_df.empty:
+        st.caption("No pension contributions recorded yet.")
+    else:
+        st.bar_chart(pension_df.set_index("Month"))
+        st.caption(f"Total Pension Contributions: €{pension_df['Amount'].sum():,.2f}")
+
+    st.caption(f"Reported Pension Profit: DKK {pension_profit_dkk:,.2f}")
+
+    render_monthly_chart("Monthly Dividends", dividends_df, "Total Dividends")
 
 
 def render_manual_input_section(tickers: List[str]):

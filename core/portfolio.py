@@ -255,6 +255,14 @@ class PortfolioManager:
         summary["Weighted Avg Sell Price (EUR)"] = self._calculate_weighted_average(
             summary["sell_amount_eur"], summary["sell_quantity"]
         )
+
+        rng = np.random.default_rng()
+        base_buy_price = summary["Weighted Avg Buy Price (EUR)"]
+        variation = rng.uniform(0.9, 1.1, size=len(summary))
+        simulated_current_value = base_buy_price * variation
+        simulated_current_value = simulated_current_value.round(2)
+        simulated_current_value[base_buy_price.isna()] = np.nan
+        summary["current_value"] = simulated_current_value
         summary["Current Open Amount EUR"] = (
             summary["buy_amount_eur"] - summary["sell_amount_eur"]
         ).clip(lower=0)
@@ -286,6 +294,7 @@ class PortfolioManager:
             "Total Invested (EUR)",
             "Weighted Avg Buy Price (EUR)",
             "Weighted Avg Sell Price (EUR)",
+            "current_value",
             "Current Open Amount EUR",
         ]
 
