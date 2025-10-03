@@ -258,6 +258,51 @@ def render_stock_view(stock_view_df: pd.DataFrame):
             "Prices are displayed per share in EUR. Profit combines realized and unrealized performance."
         )
 
+    st.markdown("---")
+    st.markdown("### 📚 All Stocks")
+    st.caption(
+        "Browse every tracked stock in alphabetical order. Use the selector above to focus on a single position, then scroll to review the complete list."
+    )
+
+    all_stocks_df = (
+        stock_view_df.dropna(subset=["Name"])
+        .sort_values("Name", key=lambda s: s.astype(str).str.lower())
+        .reset_index(drop=True)
+    )
+
+    if all_stocks_df.empty:
+        st.info("ℹ️ No additional stock details available to display.")
+        return
+
+    for start in range(0, len(all_stocks_df), 3):
+        columns = st.columns(3, gap="large")
+        for column, (_, stock_row) in zip(
+            columns, all_stocks_df.iloc[start : start + 3].iterrows()
+        ):
+            with column:
+                st.markdown(f"**{stock_row['Name']}**")
+                st.metric(
+                    "Profit",
+                    _format_currency(stock_row.get("Profit (EUR)")),
+                    _format_percentage(stock_row.get("Profit (%)")),
+                )
+                st.caption(
+                    " | ".join(
+                        [
+                            f"Avg Buy: {_format_currency(stock_row.get('Weighted Avg Buy Price (EUR)'))}",
+                            f"Avg Sell: {_format_currency(stock_row.get('Weighted Avg Sell Price (EUR)'))}",
+                        ]
+                    )
+                )
+                st.caption(
+                    " | ".join(
+                        [
+                            f"Current Price: {_format_currency(stock_row.get('Current Price (EUR)'))}",
+                            f"Current Value: {_format_currency(stock_row.get('Current Value (EUR)'))}",
+                        ]
+                    )
+                )
+
 
 def render_manual_input_section(tickers: List[str]):
     """
