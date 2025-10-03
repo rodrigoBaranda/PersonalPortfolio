@@ -173,8 +173,14 @@ class PortfolioManager:
         logger.warning("No price available for ticker '%s'", ticker)
         return None
 
+    @staticmethod
+    def _calculate_weighted_average(total_amounts: pd.Series, total_quantities: pd.Series) -> pd.Series:
+        """Return weighted average prices, safely handling zero quantities."""
+        safe_quantities = total_quantities.replace({0: np.nan})
+        return total_amounts.div(safe_quantities)
+
     def calculate_weighted_average_cost(self) -> pd.DataFrame:
-        """Calculate weighted average cost in EUR per company based on buy transactions."""
+        """Calculate weighted average pricing summary per company including buy and sell data."""
         if self._transactions_df is None or self._transactions_df.empty:
             logger.warning("No transactions loaded before calculating weighted average cost")
             return pd.DataFrame()
@@ -190,17 +196,11 @@ class PortfolioManager:
             return pd.DataFrame()
 
         df = self._transactions_df.copy()
-        df = df[df["type"] == "Buy"]
-
-        if df.empty:
-            logger.info("No BUY transactions available for weighted average cost calculation")
-            return pd.DataFrame()
-
         df = df[df["quantity"].notna()]
         df = df[df["quantity"] > 0]
 
         if df.empty:
-            logger.info("No BUY transactions with positive quantity found")
+            logger.info("No transactions with positive quantity available for summary")
             return pd.DataFrame()
 
         effective_price = df["price_per_unit_eur"].copy()
@@ -209,47 +209,83 @@ class PortfolioManager:
 
         df = df.assign(
             effective_price_eur=effective_price,
-            invested_eur=lambda data: data["quantity"] * data["effective_price_eur"],
+            amount_eur=lambda data: data["quantity"] * data["effective_price_eur"],
         )
 
-        grouped = (
-            df.groupby("name", dropna=True)
-            .agg(
-                total_quantity=("quantity", "sum"),
-                total_invested_eur=("invested_eur", "sum"),
-                purchase_count=("quantity", "count"),
+        def _aggregate_transactions(data: pd.DataFrame, transaction_type: str, prefix: str) -> pd.DataFrame:
+            subset = data[data["type"] == transaction_type]
+            if subset.empty:
+                return pd.DataFrame(
+                    columns=[
+                        "name",
+                        f"{prefix}_quantity",
+                        f"{prefix}_amount_eur",
+                        f"{prefix}_transactions",
+                    ]
+                )
+
+            aggregation = subset.groupby("name", dropna=True).agg(
+                **{
+                    f"{prefix}_quantity": ("quantity", "sum"),
+                    f"{prefix}_amount_eur": ("amount_eur", "sum"),
+                    f"{prefix}_transactions": ("quantity", "count"),
+                }
             )
-            .reset_index()
-        )
 
-        grouped = grouped[grouped["total_quantity"] > 0]
+            return aggregation.reset_index()
 
-        if grouped.empty:
-            logger.info("No aggregated BUY transactions with positive quantity")
+        buy_summary = _aggregate_transactions(df, "Buy", "buy")
+        sell_summary = _aggregate_transactions(df, "Sell", "sell")
+
+        if buy_summary.empty and sell_summary.empty:
+            logger.info("No BUY or SELL transactions available for summary")
             return pd.DataFrame()
 
-        grouped["weighted_avg_cost_eur"] = grouped["total_invested_eur"] / grouped["total_quantity"]
-        grouped["purchase_count"] = grouped["purchase_count"].astype(int)
+        summary = pd.merge(buy_summary, sell_summary, on="name", how="outer")
 
-        grouped = grouped.sort_values("total_invested_eur", ascending=False).reset_index(drop=True)
-        grouped.rename(
-            columns={
-                "name": "Name",
-                "total_quantity": "Total Quantity",
-                "total_invested_eur": "Total Invested (EUR)",
-                "purchase_count": "Purchased Times",
-                "weighted_avg_cost_eur": "Weighted Avg Cost (EUR)",
-            },
-            inplace=True,
+        numeric_columns = summary.select_dtypes(include=[np.number]).columns
+        summary[numeric_columns] = summary[numeric_columns].fillna(0)
+
+        summary["Number of Shares"] = summary["buy_quantity"] - summary["sell_quantity"]
+        summary["Total Invested (EUR)"] = summary["buy_amount_eur"]
+        summary["Purchased Times"] = summary["buy_transactions"].fillna(0).astype(int)
+        summary["Weighted Avg Buy Price (EUR)"] = self._calculate_weighted_average(
+            summary["buy_amount_eur"], summary["buy_quantity"]
         )
+        summary["Weighted Avg Sell Price (EUR)"] = self._calculate_weighted_average(
+            summary["sell_amount_eur"], summary["sell_quantity"]
+        )
+        summary["Current Open Amount EUR"] = summary["buy_amount_eur"] - summary["sell_amount_eur"]
+        summary["Position Status"] = np.where(
+            summary["buy_quantity"] > summary["sell_quantity"],
+            "Open",
+            "Closed",
+        )
+
+        summary = summary.rename(columns={"name": "Name"})
+
+        summary = summary.sort_values("Current Open Amount EUR", ascending=False).reset_index(drop=True)
+
+        columns_to_drop = [
+            "buy_quantity",
+            "sell_quantity",
+            "buy_amount_eur",
+            "sell_amount_eur",
+            "buy_transactions",
+            "sell_transactions",
+        ]
+        summary.drop(columns=[col for col in columns_to_drop if col in summary.columns], inplace=True)
 
         column_order = [
             "Name",
+            "Position Status",
             "Purchased Times",
-            "Total Quantity",
+            "Number of Shares",
             "Total Invested (EUR)",
-            "Weighted Avg Cost (EUR)",
+            "Weighted Avg Buy Price (EUR)",
+            "Weighted Avg Sell Price (EUR)",
+            "Current Open Amount EUR",
         ]
 
-        return grouped[column_order]
+        return summary[column_order]
 
