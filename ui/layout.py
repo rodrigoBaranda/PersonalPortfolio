@@ -62,7 +62,7 @@ def render_dashboard(portfolio_manager: PortfolioManager):
     with summary_tab:
         with st.spinner("🧮 Calculating weighted average costs..."):
             summary_df = portfolio_manager.calculate_weighted_average_cost()
-        render_weighted_average_cost_summary(summary_df)
+        render_weighted_average_cost_summary(summary_df, transactions_df)
 
     # Footer
     st.markdown("---")
