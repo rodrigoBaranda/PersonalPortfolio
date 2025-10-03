@@ -104,7 +104,7 @@ def render_weighted_average_cost_summary(
         "Total Invested (EUR)": "€{:,.2f}",
         "Weighted Avg Buy Price (EUR)": "€{:,.2f}",
         "Weighted Avg Sell Price (EUR)": "€{:,.2f}",
-        "current_value": "€{:,.2f}",
+        "Current Price (EUR)": "€{:,.2f}",
         "Current Open Amount EUR": "€{:,.2f}",
     })
 
