@@ -43,6 +43,7 @@ class DataQualityConfig:
 
     column_mapping: Dict[str, str]
     numeric_columns: Iterable[str]
+    datetime_columns: Iterable[str]
     allowed_types: Dict[str, str]
     allowed_currencies: Iterable[str]
 
@@ -78,6 +79,7 @@ DEFAULT_CONFIG = DataQualityConfig(
         "fx_rate",
         "net_base_eur",
     ),
+    datetime_columns=("date",),
     allowed_types={
         "BUY": "Buy",
         "SELL": "Sell",
@@ -125,9 +127,11 @@ def  clean_transactions(
     # Convert numeric columns using European number formatting
     df = convert_euro_numbers(df, columns=config.numeric_columns)
 
-    # Convert date columns to datetime
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    # Convert configured datetime columns and drop time component
+    for column in config.datetime_columns:
+        if column in df.columns:
+            df[column] = pd.to_datetime(df[column], errors="coerce", dayfirst=True)
+            df[column] = df[column].dt.date
 
     # Normalize transaction types
     if "type" in df.columns:

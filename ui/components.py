@@ -79,6 +79,34 @@ def render_transactions_expander(transactions_df: pd.DataFrame):
         st.caption(f"Total transactions: {len(transactions_df)}")
 
 
+def render_transactions_table(transactions_df: pd.DataFrame):
+    """Render the transactions table in the dedicated tab."""
+    logger.info("Rendering transactions table with %d rows", len(transactions_df))
+    st.subheader("📄 Transactions")
+    st.dataframe(transactions_df, use_container_width=True)
+    st.caption(f"Total transactions: {len(transactions_df)}")
+
+
+def render_weighted_average_cost_summary(summary_df: pd.DataFrame):
+    """Render weighted average cost summary by company."""
+    st.subheader("📘 Weighted Average Cost by Company")
+
+    if summary_df is None or summary_df.empty:
+        logger.info("Weighted average cost summary is empty")
+        st.info("ℹ️ No buy transactions available to compute a weighted average cost.")
+        return
+
+    formatted_df = summary_df.style.format({
+        "Purchased Times": "{:.0f}",
+        "Total Quantity": "{:.2f}",
+        "Total Invested (EUR)": "€{:,.2f}",
+        "Weighted Avg Cost (EUR)": "€{:,.2f}",
+    })
+
+    st.dataframe(formatted_df, use_container_width=True)
+    st.caption("Weighted averages are based on buy transactions expressed in EUR.")
+
+
 def render_manual_input_section(tickers: List[str]):
     """
     Render manual input section for non-stock investments
