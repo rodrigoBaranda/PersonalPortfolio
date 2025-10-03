@@ -11,6 +11,7 @@ from core.portfolio import PortfolioManager
 from ui.components import (
     render_transactions_table,
     render_weighted_average_cost_summary,
+    render_stock_view,
 )
 from utils import get_logger
 
@@ -21,6 +22,7 @@ logger = get_logger(__name__)
 TAB_LABELS = {
     "transactions": "Transactions",
     "summary": "Summary",
+    "stocks": "Stock View",
 }
 
 
@@ -53,8 +55,12 @@ def render_dashboard(portfolio_manager: PortfolioManager):
         logger.warning("No transactions data available after load")
         return
 
-    tab_names = [TAB_LABELS["transactions"], TAB_LABELS["summary"]]
-    transactions_tab, summary_tab = st.tabs(tab_names)
+    tab_names = [
+        TAB_LABELS["transactions"],
+        TAB_LABELS["summary"],
+        TAB_LABELS["stocks"],
+    ]
+    transactions_tab, summary_tab, stocks_tab = st.tabs(tab_names)
 
     with transactions_tab:
         render_transactions_table(transactions_df)
@@ -63,6 +69,11 @@ def render_dashboard(portfolio_manager: PortfolioManager):
         with st.spinner("🧮 Calculating weighted average costs..."):
             summary_df = portfolio_manager.calculate_weighted_average_cost()
         render_weighted_average_cost_summary(summary_df, transactions_df)
+
+    with stocks_tab:
+        with st.spinner("📊 Building stock view..."):
+            stock_view_df = portfolio_manager.calculate_stock_view()
+        render_stock_view(stock_view_df)
 
     # Footer
     st.markdown("---")
