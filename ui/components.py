@@ -2,10 +2,12 @@
 UI Components
 Reusable UI components for the Streamlit application
 """
-import streamlit as st
-import pandas as pd
 from datetime import datetime
-from typing import List, Tuple
+import html
+
+import pandas as pd
+import streamlit as st
+
 from utils import get_logger
 
 
@@ -98,6 +100,116 @@ def render_weighted_average_cost_summary(
         st.info("ℹ️ No transactions available to compute the portfolio overview.")
         return
 
+    manual_values = st.session_state.setdefault("manual_values", {})
+
+    missing_price_series = (
+        summary_df["Current Price (EUR)"].isna()
+        if "Current Price (EUR)" in summary_df.columns
+        else pd.Series(False, index=summary_df.index)
+    )
+
+    open_positions_series = (
+        summary_df["Position Status"].eq("Open")
+        if "Position Status" in summary_df.columns
+        else pd.Series(True, index=summary_df.index, dtype=bool)
+    )
+
+    interest_names: set = set()
+    if (
+        transactions_df is not None
+        and not transactions_df.empty
+        and {"name", "type"}.issubset(transactions_df.columns)
+    ):
+        interest_mask = (
+            transactions_df["type"].astype(str).str.strip().str.lower() == "interest"
+        )
+        interest_names = set(
+            transactions_df.loc[interest_mask, "name"].dropna().astype(str).unique()
+        )
+
+    is_interest_summary = (
+        summary_df["Name"].astype(str).isin(interest_names)
+        if "Name" in summary_df.columns and interest_names
+        else pd.Series(False, index=summary_df.index)
+    )
+
+    manual_candidate_mask = (
+        missing_price_series & open_positions_series & ~is_interest_summary
+    )
+
+    if manual_candidate_mask.any():
+        st.markdown("### ✏️ Update Missing Prices")
+        st.caption(
+            "Provide the latest price for each open position below. Highlighted rows in the table correspond to these entries."
+        )
+
+        manual_editor_df = summary_df.loc[
+            manual_candidate_mask,
+            [col for col in ["Name", "Ticker", "Current Price (EUR)"] if col in summary_df.columns],
+        ].copy()
+
+        if "Ticker" not in manual_editor_df.columns:
+            manual_editor_df.insert(1, "Ticker", manual_editor_df["Name"])
+
+        for idx, row in manual_editor_df.iterrows():
+            ticker = row.get("Ticker")
+            if ticker in manual_values:
+                manual_editor_df.at[idx, "Current Price (EUR)"] = manual_values.get(ticker)
+
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stDataFrame"][data-st-key="summary_price_editor"] {
+                background-color: #f1f3f5;
+                border-radius: 0.75rem;
+                padding: 1rem;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        edited_manual_df = st.data_editor(
+            manual_editor_df,
+            column_config={
+                "Name": st.column_config.TextColumn("Name", disabled=True),
+                "Ticker": st.column_config.TextColumn(
+                    "Ticker",
+                    disabled=True,
+                    help="Identifier used for manual price overrides.",
+                ),
+                "Current Price (EUR)": st.column_config.NumberColumn(
+                    "Current Price (EUR)",
+                    help="Provide the latest price per share in EUR.",
+                    min_value=0.0,
+                    step=0.01,
+                    format="%.2f",
+                    required=True,
+                ),
+            },
+            hide_index=True,
+            key="summary_price_editor",
+            num_rows="fixed",
+        )
+
+        for _, row in edited_manual_df.iterrows():
+            ticker = row.get("Ticker")
+            price = row.get("Current Price (EUR)")
+            if not ticker:
+                continue
+            if pd.notna(price) and float(price) > 0:
+                manual_values[ticker] = float(price)
+                if "Ticker" in summary_df.columns:
+                    summary_df.loc[
+                        summary_df["Ticker"] == ticker, "Current Price (EUR)"
+                    ] = float(price)
+                else:
+                    summary_df.loc[
+                        summary_df["Name"] == row.get("Name"), "Current Price (EUR)"
+                    ] = float(price)
+            elif ticker in manual_values:
+                manual_values.pop(ticker)
+
     formatted_df = summary_df.style.format({
         "Purchased Times": "{:.0f}",
         "Number of Shares": "{:.2f}",
@@ -107,6 +219,15 @@ def render_weighted_average_cost_summary(
         "Current Price (EUR)": "€{:,.2f}",
         "Current Open Amount EUR": "€{:,.2f}",
     })
+
+    highlight_indices = set(summary_df.index[manual_candidate_mask])
+
+    def _highlight_missing(row: pd.Series):
+        if row.name in highlight_indices:
+            return ["background-color: #f1f3f5"] * len(row)
+        return [""] * len(row)
+
+    formatted_df = formatted_df.apply(_highlight_missing, axis=1)
 
     st.dataframe(formatted_df, use_container_width=True)
     st.caption("Summary combines buy and sell transactions and is sorted by current open amount in EUR.")
@@ -274,61 +395,135 @@ def render_stock_view(stock_view_df: pd.DataFrame):
         st.info("ℹ️ No additional stock details available to display.")
         return
 
-    for start in range(0, len(all_stocks_df), 3):
-        columns = st.columns(3, gap="large")
-        for column, (_, stock_row) in zip(
-            columns, all_stocks_df.iloc[start : start + 3].iterrows()
-        ):
-            with column:
-                st.markdown(f"**{stock_row['Name']}**")
-                st.metric(
-                    "Profit",
-                    _format_currency(stock_row.get("Profit (EUR)")),
-                    _format_percentage(stock_row.get("Profit (%)")),
-                )
-                st.caption(
-                    " | ".join(
-                        [
-                            f"Avg Buy: {_format_currency(stock_row.get('Weighted Avg Buy Price (EUR)'))}",
-                            f"Avg Sell: {_format_currency(stock_row.get('Weighted Avg Sell Price (EUR)'))}",
-                        ]
-                    )
-                )
-                st.caption(
-                    " | ".join(
-                        [
-                            f"Current Price: {_format_currency(stock_row.get('Current Price (EUR)'))}",
-                            f"Current Value: {_format_currency(stock_row.get('Current Value (EUR)'))}",
-                        ]
-                    )
-                )
+    st.markdown(
+        """
+        <style>
+        .stock-section {
+            border-radius: 1rem;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        .stock-section.open {
+            background: linear-gradient(135deg, #eef8ff 0%, #f6fbff 100%);
+        }
+        .stock-section.closed {
+            background: linear-gradient(135deg, #f7f1ff 0%, #fbf5ff 100%);
+        }
+        .stock-section h4 {
+            margin-top: 0;
+        }
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .stock-card {
+            background: white;
+            border-radius: 0.85rem;
+            padding: 1rem;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .stock-card.closed {
+            background: #fff8ff;
+        }
+        .stock-card__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+        .stock-card__label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6b7280;
+        }
+        .stock-card__value {
+            font-weight: 600;
+            color: #111827;
+        }
+        .stock-card__metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.95rem;
+        }
+        .stock-card__profit-positive {
+            color: #0f9d58;
+        }
+        .stock-card__profit-negative {
+            color: #d93025;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    def _render_stock_cards(section_title: str, section_df: pd.DataFrame, section_class: str):
+        st.markdown(f"<div class='stock-section {section_class}'>", unsafe_allow_html=True)
+        st.markdown(f"<h4>{html.escape(section_title)}</h4>", unsafe_allow_html=True)
 
-def render_manual_input_section(tickers: List[str]):
-    """
-    Render manual input section for non-stock investments
+        if section_df.empty:
+            st.markdown("<p>No positions in this category yet.</p>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            return
 
-    Args:
-        tickers: List of ticker symbols needing manual input
-    """
-    logger.info("Rendering manual input section for %d tickers", len(tickers))
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("💼 Manual Value Input")
-    st.sidebar.caption("Enter current values for investments without market data:")
+        cards_html = []
+        for _, stock_row in section_df.iterrows():
+            profit_value = _format_currency(stock_row.get("Profit (EUR)"))
+            profit_pct_value = _format_percentage(stock_row.get("Profit (%)"))
+            profit_class = "stock-card__profit-positive"
+            profit_number = stock_row.get("Profit (EUR)")
+            if pd.isna(profit_number) or profit_number == 0:
+                profit_class = ""
+            elif profit_number < 0:
+                profit_class = "stock-card__profit-negative"
 
-    for ticker in tickers:
-        current_value = st.session_state.manual_values.get(ticker, 0.0)
-        new_value = st.sidebar.number_input(
-            f"{ticker}:",
-            min_value=0.0,
-            value=current_value,
-            step=100.0,
-            format="%.2f",
-            key=f"manual_{ticker}",
-            help=f"Current value per unit for {ticker}"
+            card_html = f"""
+            <div class="stock-card {'closed' if stock_row.get('Position Status') == 'Closed' else ''}">
+                <div class="stock-card__header">
+                    <span>{html.escape(str(stock_row.get('Name', '—')))}</span>
+                    <span class="stock-card__label">{html.escape(str(stock_row.get('Position Status', '—')))}</span>
+                </div>
+                <div class="stock-card__metric">
+                    <span class="stock-card__label">Profit</span>
+                    <span class="stock-card__value {profit_class}">{html.escape(profit_value)} ({html.escape(profit_pct_value)})</span>
+                </div>
+                <div class="stock-card__metric">
+                    <span class="stock-card__label">Avg Buy</span>
+                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Buy Price (EUR)')))}</span>
+                </div>
+                <div class="stock-card__metric">
+                    <span class="stock-card__label">Avg Sell</span>
+                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Weighted Avg Sell Price (EUR)')))}</span>
+                </div>
+                <div class="stock-card__metric">
+                    <span class="stock-card__label">Current Price</span>
+                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Price (EUR)')))}</span>
+                </div>
+                <div class="stock-card__metric">
+                    <span class="stock-card__label">Current Value</span>
+                    <span class="stock-card__value">{html.escape(_format_currency(stock_row.get('Current Value (EUR)')))}</span>
+                </div>
+            </div>
+            """
+            cards_html.append(card_html)
+
+        st.markdown(
+            f"<div class='stock-grid'>{''.join(cards_html)}</div>",
+            unsafe_allow_html=True,
         )
-        st.session_state.manual_values[ticker] = new_value
-        logger.debug("Manual value set for %s: %s", ticker, new_value)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    open_positions = all_stocks_df[all_stocks_df["Position Status"] == "Open"]
+    closed_positions = all_stocks_df[all_stocks_df["Position Status"] == "Closed"]
+
+    _render_stock_cards("Open Positions", open_positions, "open")
+    _render_stock_cards("Closed Positions", closed_positions, "closed")
 
 
 def render_summary_metrics(portfolio_df: pd.DataFrame):
