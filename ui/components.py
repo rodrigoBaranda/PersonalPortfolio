@@ -88,23 +88,25 @@ def render_transactions_table(transactions_df: pd.DataFrame):
 
 
 def render_weighted_average_cost_summary(summary_df: pd.DataFrame):
-    """Render weighted average cost summary by company."""
-    st.subheader("📘 Weighted Average Cost by Company")
+    """Render portfolio summary by company."""
+    st.subheader("📘 Portfolio Overview")
 
     if summary_df is None or summary_df.empty:
         logger.info("Weighted average cost summary is empty")
-        st.info("ℹ️ No buy transactions available to compute a weighted average cost.")
+        st.info("ℹ️ No transactions available to compute the portfolio overview.")
         return
 
     formatted_df = summary_df.style.format({
         "Purchased Times": "{:.0f}",
-        "Total Quantity": "{:.2f}",
+        "Number of Shares": "{:.2f}",
         "Total Invested (EUR)": "€{:,.2f}",
-        "Weighted Avg Cost (EUR)": "€{:,.2f}",
+        "Weighted Avg Buy Price (EUR)": "€{:,.2f}",
+        "Weighted Avg Sell Price (EUR)": "€{:,.2f}",
+        "Current Open Amount EUR": "€{:,.2f}",
     })
 
     st.dataframe(formatted_df, use_container_width=True)
-    st.caption("Weighted averages are based on buy transactions expressed in EUR.")
+    st.caption("Summary combines buy and sell transactions and is sorted by current open amount in EUR.")
 
 
 def render_manual_input_section(tickers: List[str]):
