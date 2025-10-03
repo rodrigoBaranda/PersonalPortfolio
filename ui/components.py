@@ -3,7 +3,6 @@ UI Components
 Reusable UI components for the Streamlit application
 """
 from datetime import datetime
-from typing import List, Tuple
 import html
 
 import pandas as pd
@@ -103,20 +102,49 @@ def render_weighted_average_cost_summary(
 
     manual_values = st.session_state.setdefault("manual_values", {})
 
-    needs_manual_price = (
+    missing_price_series = (
         summary_df["Current Price (EUR)"].isna()
         if "Current Price (EUR)" in summary_df.columns
-        else pd.Series([], dtype=bool)
+        else pd.Series(False, index=summary_df.index)
     )
 
-    if needs_manual_price.any():
+    open_positions_series = (
+        summary_df["Position Status"].eq("Open")
+        if "Position Status" in summary_df.columns
+        else pd.Series(True, index=summary_df.index, dtype=bool)
+    )
+
+    interest_names: set = set()
+    if (
+        transactions_df is not None
+        and not transactions_df.empty
+        and {"name", "type"}.issubset(transactions_df.columns)
+    ):
+        interest_mask = (
+            transactions_df["type"].astype(str).str.strip().str.lower() == "interest"
+        )
+        interest_names = set(
+            transactions_df.loc[interest_mask, "name"].dropna().astype(str).unique()
+        )
+
+    is_interest_summary = (
+        summary_df["Name"].astype(str).isin(interest_names)
+        if "Name" in summary_df.columns and interest_names
+        else pd.Series(False, index=summary_df.index)
+    )
+
+    manual_candidate_mask = (
+        missing_price_series & open_positions_series & ~is_interest_summary
+    )
+
+    if manual_candidate_mask.any():
         st.markdown("### ✏️ Update Missing Prices")
         st.caption(
-            "Enter the latest price for each highlighted row. These values will be used for future calculations."
+            "Provide the latest price for each open position below. Highlighted rows in the table correspond to these entries."
         )
 
         manual_editor_df = summary_df.loc[
-            needs_manual_price,
+            manual_candidate_mask,
             [col for col in ["Name", "Ticker", "Current Price (EUR)"] if col in summary_df.columns],
         ].copy()
 
@@ -192,8 +220,10 @@ def render_weighted_average_cost_summary(
         "Current Open Amount EUR": "€{:,.2f}",
     })
 
+    highlight_indices = set(summary_df.index[manual_candidate_mask])
+
     def _highlight_missing(row: pd.Series):
-        if pd.isna(row.get("Current Price (EUR)")):
+        if row.name in highlight_indices:
             return ["background-color: #f1f3f5"] * len(row)
         return [""] * len(row)
 
@@ -494,33 +524,6 @@ def render_stock_view(stock_view_df: pd.DataFrame):
 
     _render_stock_cards("Open Positions", open_positions, "open")
     _render_stock_cards("Closed Positions", closed_positions, "closed")
-
-
-def render_manual_input_section(tickers: List[str]):
-    """
-    Render manual input section for non-stock investments
-
-    Args:
-        tickers: List of ticker symbols needing manual input
-    """
-    logger.info("Rendering manual input section for %d tickers", len(tickers))
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("💼 Manual Value Input")
-    st.sidebar.caption("Enter current values for investments without market data:")
-
-    for ticker in tickers:
-        current_value = st.session_state.manual_values.get(ticker, 0.0)
-        new_value = st.sidebar.number_input(
-            f"{ticker}:",
-            min_value=0.0,
-            value=current_value,
-            step=100.0,
-            format="%.2f",
-            key=f"manual_{ticker}",
-            help=f"Current value per unit for {ticker}"
-        )
-        st.session_state.manual_values[ticker] = new_value
-        logger.debug("Manual value set for %s: %s", ticker, new_value)
 
 
 def render_summary_metrics(portfolio_df: pd.DataFrame):

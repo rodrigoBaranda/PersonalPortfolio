@@ -12,7 +12,6 @@ from ui.components import (
     render_transactions_table,
     render_weighted_average_cost_summary,
     render_stock_view,
-    render_manual_input_section,
 )
 from utils import get_logger
 
@@ -82,11 +81,6 @@ def render_dashboard(portfolio_manager: PortfolioManager):
                 manual_values=manual_values
             )
         render_stock_view(stock_view_df)
-
-    missing_tickers = portfolio_manager.get_missing_price_tickers()
-    manual_input_candidates = sorted({*missing_tickers, *manual_values.keys()})
-    if manual_input_candidates:
-        render_manual_input_section(manual_input_candidates)
 
     # Footer
     st.markdown("---")
