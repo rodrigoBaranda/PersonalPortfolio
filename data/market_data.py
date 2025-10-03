@@ -33,11 +33,22 @@ class MarketDataProvider:
             stock = yf.Ticker(ticker)
 
             # Try to get most recent price from history
-            hist = stock.history(period="1d")
+            hist = stock.history(period="5d")
             if not hist.empty:
-                price = float(hist['Close'].iloc[-1])
-                logger.debug("Using historical close price for '%s': %s", ticker, price)
-                return price
+                close_prices = hist["Close"].dropna()
+                if not close_prices.empty:
+                    price = float(close_prices.iloc[-1])
+                    logger.debug(
+                        "Using historical close price for '%s': %s",
+                        ticker,
+                        price,
+                    )
+                    return price
+
+            logger.debug(
+                "Historical data unavailable for '%s'; falling back to ticker info",
+                ticker,
+            )
 
             # Fallback to info
             info = stock.info
