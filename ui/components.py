@@ -97,6 +97,7 @@ def render_weighted_average_cost_summary(summary_df: pd.DataFrame):
         return
 
     formatted_df = summary_df.style.format({
+        "Purchased Times": "{:.0f}",
         "Total Quantity": "{:.2f}",
         "Total Invested (EUR)": "€{:,.2f}",
         "Weighted Avg Cost (EUR)": "€{:,.2f}",

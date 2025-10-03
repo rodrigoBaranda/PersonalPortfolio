@@ -217,6 +217,7 @@ class PortfolioManager:
             .agg(
                 total_quantity=("quantity", "sum"),
                 total_invested_eur=("invested_eur", "sum"),
+                purchase_count=("quantity", "count"),
             )
             .reset_index()
         )
@@ -228,17 +229,27 @@ class PortfolioManager:
             return pd.DataFrame()
 
         grouped["weighted_avg_cost_eur"] = grouped["total_invested_eur"] / grouped["total_quantity"]
+        grouped["purchase_count"] = grouped["purchase_count"].astype(int)
 
-        grouped = grouped.sort_values("name").reset_index(drop=True)
+        grouped = grouped.sort_values("total_invested_eur", ascending=False).reset_index(drop=True)
         grouped.rename(
             columns={
                 "name": "Name",
                 "total_quantity": "Total Quantity",
                 "total_invested_eur": "Total Invested (EUR)",
+                "purchase_count": "Purchased Times",
                 "weighted_avg_cost_eur": "Weighted Avg Cost (EUR)",
             },
             inplace=True,
         )
 
-        return grouped
+        column_order = [
+            "Name",
+            "Purchased Times",
+            "Total Quantity",
+            "Total Invested (EUR)",
+            "Weighted Avg Cost (EUR)",
+        ]
+
+        return grouped[column_order]
 
