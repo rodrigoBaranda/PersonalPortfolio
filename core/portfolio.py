@@ -255,7 +255,9 @@ class PortfolioManager:
         summary["Weighted Avg Sell Price (EUR)"] = self._calculate_weighted_average(
             summary["sell_amount_eur"], summary["sell_quantity"]
         )
-        summary["Current Open Amount EUR"] = summary["buy_amount_eur"] - summary["sell_amount_eur"]
+        summary["Current Open Amount EUR"] = (
+            summary["buy_amount_eur"] - summary["sell_amount_eur"]
+        ).clip(lower=0)
         summary["Position Status"] = np.where(
             summary["buy_quantity"] > summary["sell_quantity"],
             "Open",
