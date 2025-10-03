@@ -185,6 +185,31 @@ def render_weighted_average_cost_summary(
     render_monthly_chart("Monthly Dividends", dividends_df, "Total Dividends")
 
 
+def render_stock_view(stock_view_df: pd.DataFrame):
+    """Render the stock-centric view with profit information."""
+    st.subheader("📊 Stock View")
+
+    if stock_view_df is None or stock_view_df.empty:
+        logger.info("Stock view data frame is empty")
+        st.info("ℹ️ No stock data available to display.")
+        return
+
+    styled_df = stock_view_df.style.format(
+        {
+            "Weighted Avg Buy Price (EUR)": "€{:,.2f}",
+            "Weighted Avg Sell Price (EUR)": "€{:,.2f}",
+            "Current Value (EUR)": "€{:,.2f}",
+            "Profit (%)": "{:+.2f}%",
+        },
+        na_rep="—",
+    )
+
+    st.dataframe(styled_df, use_container_width=True)
+    st.caption(
+        "Includes realized and unrealized performance using weighted average prices and current values for open positions."
+    )
+
+
 def render_manual_input_section(tickers: List[str]):
     """
     Render manual input section for non-stock investments

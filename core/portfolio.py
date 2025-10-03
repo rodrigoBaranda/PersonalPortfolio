@@ -179,23 +179,30 @@ class PortfolioManager:
         safe_quantities = total_quantities.replace({0: np.nan})
         return total_amounts.div(safe_quantities)
 
-    def calculate_weighted_average_cost(self) -> pd.DataFrame:
-        """Calculate weighted average pricing summary per company including buy and sell data."""
+    def _prepare_transaction_summary(self) -> pd.DataFrame:
+        """Aggregate buy and sell data per security."""
         if self._transactions_df is None or self._transactions_df.empty:
-            logger.warning("No transactions loaded before calculating weighted average cost")
+            logger.warning("No transactions loaded before preparing transaction summary")
             return pd.DataFrame()
 
-        required_columns = {"name", "quantity", "price_per_unit_eur", "gross_amount_eur", "type"}
+        required_columns = {
+            "name",
+            "quantity",
+            "price_per_unit_eur",
+            "gross_amount_eur",
+            "type",
+        }
         missing_columns = required_columns - set(self._transactions_df.columns)
 
         if missing_columns:
             logger.error(
-                "Cannot compute weighted average cost; missing columns: %s",
+                "Cannot prepare transaction summary; missing columns: %s",
                 ", ".join(sorted(missing_columns)),
             )
             return pd.DataFrame()
 
         df = self._transactions_df.copy()
+        df = df[df["name"].notna()]
         df = df[df["quantity"].notna()]
         df = df[df["quantity"] > 0]
 
@@ -212,7 +219,22 @@ class PortfolioManager:
             amount_eur=lambda data: data["quantity"] * data["effective_price_eur"],
         )
 
-        def _aggregate_transactions(data: pd.DataFrame, transaction_type: str, prefix: str) -> pd.DataFrame:
+        def _first_valid(series: pd.Series) -> Optional[str]:
+            valid = series.dropna()
+            return valid.iloc[0] if not valid.empty else None
+
+        metadata = (
+            df.groupby("name", dropna=True)
+            .agg(
+                ticker=("ticker", _first_valid),
+                currency=("currency", _first_valid),
+            )
+            .reset_index()
+        )
+
+        def _aggregate_transactions(
+            data: pd.DataFrame, transaction_type: str, prefix: str
+        ) -> pd.DataFrame:
             subset = data[data["type"] == transaction_type]
             if subset.empty:
                 return pd.DataFrame(
@@ -241,23 +263,60 @@ class PortfolioManager:
             logger.info("No BUY or SELL transactions available for summary")
             return pd.DataFrame()
 
-        summary = pd.merge(buy_summary, sell_summary, on="name", how="outer")
+        summary = metadata
+        if not buy_summary.empty:
+            summary = summary.merge(buy_summary, on="name", how="left")
+        else:
+            summary = summary.assign(
+                buy_quantity=0.0,
+                buy_amount_eur=0.0,
+                buy_transactions=0,
+            )
 
-        numeric_columns = summary.select_dtypes(include=[np.number]).columns
-        summary[numeric_columns] = summary[numeric_columns].fillna(0)
+        if not sell_summary.empty:
+            summary = summary.merge(sell_summary, on="name", how="left")
+        else:
+            summary = summary.assign(
+                sell_quantity=0.0,
+                sell_amount_eur=0.0,
+                sell_transactions=0,
+            )
 
-        summary["Number of Shares"] = summary["buy_quantity"] - summary["sell_quantity"]
-        summary["Total Invested (EUR)"] = summary["buy_amount_eur"]
-        summary["Purchased Times"] = summary["buy_transactions"].fillna(0).astype(int)
-        summary["Weighted Avg Buy Price (EUR)"] = self._calculate_weighted_average(
-            summary["buy_amount_eur"], summary["buy_quantity"]
+        for column in [
+            "buy_quantity",
+            "buy_amount_eur",
+            "buy_transactions",
+            "sell_quantity",
+            "sell_amount_eur",
+            "sell_transactions",
+        ]:
+            if column in summary.columns:
+                summary[column] = summary[column].fillna(0.0)
+
+        summary["buy_transactions"] = summary["buy_transactions"].astype(int)
+        summary["sell_transactions"] = summary["sell_transactions"].astype(int)
+
+        summary = summary.assign(
+            total_invested_eur=summary["buy_amount_eur"],
+            shares_outstanding=summary["buy_quantity"] - summary["sell_quantity"],
+            weighted_avg_buy_price_eur=self._calculate_weighted_average(
+                summary["buy_amount_eur"], summary["buy_quantity"]
+            ),
+            weighted_avg_sell_price_eur=self._calculate_weighted_average(
+                summary["sell_amount_eur"], summary["sell_quantity"]
+            ),
         )
-        summary["Weighted Avg Sell Price (EUR)"] = self._calculate_weighted_average(
-            summary["sell_amount_eur"], summary["sell_quantity"]
-        )
+
+        return summary
+
+    def calculate_weighted_average_cost(self) -> pd.DataFrame:
+        """Calculate weighted average pricing summary per company including buy and sell data."""
+        summary = self._prepare_transaction_summary()
+        if summary.empty:
+            return pd.DataFrame()
 
         rng = np.random.default_rng()
-        base_buy_price = summary["Weighted Avg Buy Price (EUR)"]
+        base_buy_price = summary["weighted_avg_buy_price_eur"]
         variation = rng.uniform(0.9, 1.1, size=len(summary))
         simulated_current_value = base_buy_price * variation
         simulated_current_value = simulated_current_value.round(2)
@@ -267,22 +326,35 @@ class PortfolioManager:
             summary["buy_amount_eur"] - summary["sell_amount_eur"]
         ).clip(lower=0)
         summary["Position Status"] = np.where(
-            summary["buy_quantity"] > summary["sell_quantity"],
+            summary["shares_outstanding"] > 0,
             "Open",
             "Closed",
         )
 
-        summary = summary.rename(columns={"name": "Name"})
+        summary = summary.rename(
+            columns={
+                "name": "Name",
+                "buy_transactions": "Purchased Times",
+                "shares_outstanding": "Number of Shares",
+                "total_invested_eur": "Total Invested (EUR)",
+                "weighted_avg_buy_price_eur": "Weighted Avg Buy Price (EUR)",
+                "weighted_avg_sell_price_eur": "Weighted Avg Sell Price (EUR)",
+            }
+        )
+
+        if "Purchased Times" in summary.columns:
+            summary["Purchased Times"] = summary["Purchased Times"].astype(int)
 
         summary = summary.sort_values("Current Open Amount EUR", ascending=False).reset_index(drop=True)
 
         columns_to_drop = [
+            "ticker",
+            "currency",
+            "sell_transactions",
             "buy_quantity",
             "sell_quantity",
             "buy_amount_eur",
             "sell_amount_eur",
-            "buy_transactions",
-            "sell_transactions",
         ]
         summary.drop(columns=[col for col in columns_to_drop if col in summary.columns], inplace=True)
 
@@ -299,4 +371,72 @@ class PortfolioManager:
         ]
 
         return summary[column_order]
+
+    def calculate_stock_view(self, manual_values: Optional[Dict[str, float]] = None) -> pd.DataFrame:
+        """Return a stock-centric view with profit calculations."""
+        manual_values = manual_values or {}
+        summary = self._prepare_transaction_summary()
+        if summary.empty:
+            return pd.DataFrame()
+
+        results = []
+
+        for _, row in summary.iterrows():
+            name = row.get("name")
+            ticker = row.get("ticker")
+            currency = row.get("currency") or "EUR"
+            buy_qty = float(row.get("buy_quantity", 0.0))
+            sell_qty = float(row.get("sell_quantity", 0.0))
+            invested_eur = float(row.get("total_invested_eur", 0.0))
+            avg_buy = row.get("weighted_avg_buy_price_eur")
+            avg_sell = row.get("weighted_avg_sell_price_eur")
+
+            remaining_qty = max(buy_qty - sell_qty, 0.0)
+
+            current_price = None
+            current_value_eur = np.nan
+
+            if remaining_qty > 0 and ticker:
+                current_price = self._get_current_price(ticker, manual_values)
+                if current_price is not None:
+                    exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
+                    current_value_eur = remaining_qty * current_price * exchange_rate
+                else:
+                    logger.debug(
+                        "Skipping current value for '%s' due to missing market data", ticker
+                    )
+            elif remaining_qty <= 0:
+                current_value_eur = 0.0
+
+            realized_value_eur = float(row.get("sell_amount_eur", 0.0))
+
+            total_value_eur = realized_value_eur
+            if not pd.isna(current_value_eur):
+                total_value_eur += current_value_eur
+            elif remaining_qty > 0:
+                total_value_eur = np.nan
+
+            profit_pct = np.nan
+            if invested_eur > 0 and not pd.isna(total_value_eur):
+                profit_eur = total_value_eur - invested_eur
+                profit_pct = (profit_eur / invested_eur) * 100
+
+            def _round_or_nan(value: Optional[float]) -> float:
+                if value is None or pd.isna(value):
+                    return np.nan
+                return round(float(value), 2)
+
+            results.append(
+                {
+                    "Name": name,
+                    "Weighted Avg Buy Price (EUR)": _round_or_nan(avg_buy),
+                    "Weighted Avg Sell Price (EUR)": _round_or_nan(avg_sell),
+                    "Current Value (EUR)": _round_or_nan(current_value_eur),
+                    "Profit (%)": _round_or_nan(profit_pct),
+                }
+            )
+
+        stock_view_df = pd.DataFrame(results)
+        stock_view_df = stock_view_df.sort_values("Name").reset_index(drop=True)
+        return stock_view_df
 
