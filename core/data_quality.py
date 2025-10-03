@@ -4,11 +4,37 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
 
+import numpy as np
 import pandas as pd
 
 from utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def convert_euro_numbers(
+    df: pd.DataFrame, columns: Optional[Iterable[str]] = None
+) -> pd.DataFrame:
+    """Convert European-formatted number strings to numeric values.
+
+    European format uses ``.`` as the thousand separator and ``,`` as the decimal
+    separator. This helper normalizes those values to standard floating-point
+    notation and coerces non-numeric entries to ``NaN``.
+    """
+
+    df = df.copy()
+
+    if columns is None:
+        columns = df.select_dtypes(include=["object", "string"]).columns
+
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+            df[col] = df[col].str.replace(".", "", regex=False)
+            df[col] = df[col].str.replace(",", ".", regex=False)
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df
 
 
 @dataclass(frozen=True)
@@ -96,10 +122,8 @@ def  clean_transactions(
         df[column] = df[column].map(lambda x: x.strip() if isinstance(x, str) else x)
         df[column] = df[column].replace("", pd.NA)
 
-    # Convert numeric columns to floats
-    for column in config.numeric_columns:
-        if column in df.columns:
-            df[column] = pd.to_numeric(df[column], errors="coerce")
+    # Convert numeric columns using European number formatting
+    df = convert_euro_numbers(df, columns=config.numeric_columns)
 
     # Convert date columns to datetime
     if "date" in df.columns:
