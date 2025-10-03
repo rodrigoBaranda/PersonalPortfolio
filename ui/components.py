@@ -5,7 +5,7 @@ Reusable UI components for the Streamlit application
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
 from utils import get_logger
 
 
@@ -183,6 +183,120 @@ def render_weighted_average_cost_summary(
     st.caption(f"Reported Pension Profit: DKK {pension_profit_dkk:,.2f}")
 
     render_monthly_chart("Monthly Dividends", dividends_df, "Total Dividends")
+
+
+def render_stock_view(stock_view_df: pd.DataFrame):
+    """Render the stock-centric view with selectable cards."""
+    st.subheader("📊 Stock View")
+
+    if stock_view_df is None or stock_view_df.empty:
+        logger.info("Stock view data frame is empty")
+        st.info("ℹ️ No stock data available to display.")
+        return
+
+    stock_names = stock_view_df["Name"].dropna().tolist()
+    if not stock_names:
+        logger.info("Stock view has no named entries")
+        st.info("ℹ️ Add transactions with a stock name to populate this view.")
+        return
+
+    default_index = 0
+    if "selected_stock" in st.session_state:
+        try:
+            default_index = stock_names.index(st.session_state.selected_stock)
+        except ValueError:
+            default_index = 0
+
+    selected_name = st.selectbox(
+        "Select a stock to review",
+        options=stock_names,
+        index=default_index,
+        key="selected_stock",
+    )
+
+    selected_row = (
+        stock_view_df[stock_view_df["Name"] == selected_name]
+        .iloc[0]
+        .to_dict()
+    )
+
+    def _format_currency(value: float) -> str:
+        if pd.isna(value):
+            return "—"
+        return f"€{value:,.2f}"
+
+    def _format_percent(value: float) -> str:
+        if pd.isna(value):
+            return "—"
+        return f"{value:+.2f}%"
+
+    def _format_float(value: float) -> str:
+        if pd.isna(value):
+            return "—"
+        return f"{value:,.2f}"
+
+    def render_card(column, title: str, rows: List[Tuple[str, str]]):
+        card_rows = "".join(
+            f"<div style='display:flex; justify-content:space-between; margin-bottom:0.35rem;'>"
+            f"<span style='color:#6c757d'>{label}</span>"
+            f"<span style='font-weight:600'>{value}</span>"
+            "</div>"
+            for label, value in rows
+        )
+
+        column.markdown(
+            f"""
+            <div style="background-color:#f8f9fa; border:1px solid #dee2e6; border-radius:0.75rem; padding:1.25rem; height:100%;">
+                <div style="font-size:0.95rem; font-weight:600; color:#495057; margin-bottom:0.75rem;">{title}</div>
+                {card_rows}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    col1, col2, col3 = st.columns(3)
+
+    avg_rows: List[Tuple[str, str]] = [
+        ("Buy", _format_currency(selected_row.get("Weighted Avg Buy Price (EUR)"))),
+    ]
+    sell_price = selected_row.get("Weighted Avg Sell Price (EUR)")
+    if not pd.isna(sell_price):
+        avg_rows.append(("Sell", _format_currency(sell_price)))
+    else:
+        avg_rows.append(("Sell", "—"))
+
+    render_card(col1, "Average Prices (EUR)", avg_rows)
+
+    current_price = selected_row.get("Current Price (EUR)")
+    outstanding = selected_row.get("Shares Outstanding")
+    position_status = selected_row.get("Position Status")
+    position_rows: List[Tuple[str, str]] = [
+        ("Current Price", _format_currency(current_price)),
+        ("Shares Outstanding", _format_float(outstanding)),
+    ]
+
+    render_card(col2, "Position Snapshot", position_rows)
+
+    profit_rows: List[Tuple[str, str]] = [
+        ("Profit %", _format_percent(selected_row.get("Profit (%)"))),
+        ("Profit €", _format_currency(selected_row.get("Profit (EUR)"))),
+    ]
+    render_card(col3, "Performance", profit_rows)
+
+    st.markdown(
+        f"""
+        <div style="margin-top:1.5rem; padding:1rem; border-left:4px solid #0d6efd; background-color:#eef3ff; border-radius:0.5rem;">
+            <strong>Status:</strong> {position_status}
+            <br/>
+            <span style="color:#495057;">Realized value: {_format_currency(selected_row.get('Realized Value (EUR)'))} · Unrealized value: {_format_currency(selected_row.get('Unrealized Value (EUR)'))}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "Profit calculations combine realized proceeds from sells with the current price for any remaining shares, using weighted averages for each leg."
+    )
 
 
 def render_manual_input_section(tickers: List[str]):
