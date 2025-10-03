@@ -393,7 +393,6 @@ class PortfolioManager:
         summary = summary.sort_values("Current Open Amount EUR", ascending=False).reset_index(drop=True)
 
         columns_to_drop = [
-            "ticker",
             "currency",
             "sell_transactions",
             "buy_quantity",
@@ -405,6 +404,7 @@ class PortfolioManager:
 
         column_order = [
             "Name",
+            "Ticker",
             "Position Status",
             "Purchased Times",
             "Number of Shares",
@@ -414,6 +414,8 @@ class PortfolioManager:
             "Current Price (EUR)",
             "Current Open Amount EUR",
         ]
+
+        summary = summary.rename(columns={"ticker": "Ticker"})
 
         return summary[column_order]
 
@@ -483,6 +485,7 @@ class PortfolioManager:
             results.append(
                 {
                     "Name": name,
+                    "Position Status": "Open" if remaining_qty > 0 else "Closed",
                     "Weighted Avg Buy Price (EUR)": _round_or_nan(avg_buy),
                     "Weighted Avg Sell Price (EUR)": _round_or_nan(avg_sell),
                     "Current Price (EUR)": _round_or_nan(current_price_eur),
@@ -493,6 +496,17 @@ class PortfolioManager:
             )
 
         stock_view_df = pd.DataFrame(results)
+        column_order = [
+            "Name",
+            "Position Status",
+            "Weighted Avg Buy Price (EUR)",
+            "Weighted Avg Sell Price (EUR)",
+            "Current Price (EUR)",
+            "Current Value (EUR)",
+            "Profit (EUR)",
+            "Profit (%)",
+        ]
+        stock_view_df = stock_view_df[column_order]
         stock_view_df = stock_view_df.sort_values("Name").reset_index(drop=True)
         self._missing_price_tickers.update(missing_prices)
         return stock_view_df
