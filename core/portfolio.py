@@ -4,7 +4,7 @@ Handles portfolio calculations and data processing
 """
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
+from typing import Dict, Optional, Set, Tuple
 
 from core.data_quality import clean_transactions
 from data.google_sheets import GoogleSheetsClient
@@ -33,6 +33,7 @@ class PortfolioManager:
         self.sheet_name = sheet_name
         self._transactions_df: Optional[pd.DataFrame] = None
         self._positions: Optional[Dict] = None
+        self._missing_price_tickers: Set[str] = set()
         logger.info(
             "PortfolioManager created for spreadsheet '%s' and sheet '%s'",
             spreadsheet_id,
@@ -99,19 +100,22 @@ class PortfolioManager:
                 continue
 
             # Get current price (from market or manual input)
-            current_price = self._get_current_price(ticker, manual_values)
+            current_price, price_currency = self._get_current_price(
+                ticker, manual_values
+            )
             if current_price is None or current_price == 0:
                 logger.warning("Skipping ticker '%s' due to missing current price", ticker)
                 continue
 
-            # Get exchange rate
-            exchange_rate = self.market_data.get_exchange_rate(
-                position['currency'],
-                'EUR'
-            )
+            price_currency = price_currency or position.get("currency", "EUR")
+            exchange_rate = self.market_data.get_exchange_rate(price_currency, "EUR")
 
             # Calculate values in EUR
-            invested_eur = position['invested'] * exchange_rate
+            invested_currency = position.get("currency", price_currency)
+            invested_exchange = self.market_data.get_exchange_rate(
+                invested_currency, "EUR"
+            )
+            invested_eur = position['invested'] * invested_exchange
             current_value_eur = position['quantity'] * current_price * exchange_rate
             returns = current_value_eur - invested_eur
             returns_pct = (returns / invested_eur * 100) if invested_eur > 0 else 0
@@ -158,20 +162,28 @@ class PortfolioManager:
         """Extract ticker from transaction row"""
         return row.get('Ticker', row.get('ticker', row.get('Symbol', '')))
 
-    def _get_current_price(self, ticker: str, manual_values: Dict[str, float]) -> Optional[float]:
-        """Resolve the most appropriate price for the given ticker."""
-        price = self.market_data.get_stock_price(ticker)
+    def _get_current_price(
+        self, ticker: str, manual_values: Dict[str, float]
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """Resolve the most appropriate price and its currency for the given ticker."""
+
+        price, currency = self.market_data.get_stock_quote(ticker)
         if price is not None:
-            logger.debug("Fetched market price for ticker '%s': %s", ticker, price)
-            return price
+            logger.debug(
+                "Fetched market price for ticker '%s': %s %s",
+                ticker,
+                currency or "UNKNOWN",
+                price,
+            )
+            return price, currency
 
         if ticker in manual_values:
             manual_price = manual_values[ticker]
             logger.debug("Using manual price for ticker '%s': %s", ticker, manual_price)
-            return manual_price
+            return manual_price, "EUR"
 
         logger.warning("No price available for ticker '%s'", ticker)
-        return None
+        return None, None
 
     @staticmethod
     def _calculate_weighted_average(total_amounts: pd.Series, total_quantities: pd.Series) -> pd.Series:
@@ -309,19 +321,52 @@ class PortfolioManager:
 
         return summary
 
-    def calculate_weighted_average_cost(self) -> pd.DataFrame:
+    def reset_missing_price_tickers(self) -> None:
+        """Clear the cached list of tickers without price data."""
+        self._missing_price_tickers.clear()
+
+    def get_missing_price_tickers(self) -> list:
+        """Return sorted list of tickers missing price information."""
+        return sorted(self._missing_price_tickers)
+
+    def calculate_weighted_average_cost(
+        self, manual_values: Optional[Dict[str, float]] = None
+    ) -> pd.DataFrame:
         """Calculate weighted average pricing summary per company including buy and sell data."""
+        manual_values = manual_values or {}
         summary = self._prepare_transaction_summary()
         if summary.empty:
             return pd.DataFrame()
 
-        rng = np.random.default_rng()
-        base_buy_price = summary["weighted_avg_buy_price_eur"]
-        variation = rng.uniform(0.9, 1.1, size=len(summary))
-        simulated_current_value = base_buy_price * variation
-        simulated_current_value = simulated_current_value.round(2)
-        simulated_current_value[base_buy_price.isna()] = np.nan
-        summary["current_value"] = simulated_current_value
+        current_prices_eur = []
+        missing_prices: Set[str] = set()
+
+        for _, row in summary.iterrows():
+            ticker = row.get("ticker")
+            currency = row.get("currency") or "EUR"
+            shares_outstanding = float(row.get("shares_outstanding", 0.0) or 0.0)
+
+            current_price_eur = np.nan
+
+            if shares_outstanding > 0 and ticker:
+                market_price, price_currency = self._get_current_price(
+                    ticker, manual_values
+                )
+                if market_price is not None:
+                    rate_currency = price_currency or currency or "EUR"
+                    exchange_rate = self.market_data.get_exchange_rate(
+                        rate_currency, "EUR"
+                    )
+                    current_price_eur = market_price * exchange_rate
+                else:
+                    missing_prices.add(ticker)
+
+            current_prices_eur.append(current_price_eur)
+
+        summary["Current Price (EUR)"] = (
+            pd.Series(current_prices_eur, index=summary.index).round(2)
+        )
+        self._missing_price_tickers.update(missing_prices)
         summary["Current Open Amount EUR"] = (
             summary["buy_amount_eur"] - summary["sell_amount_eur"]
         ).clip(lower=0)
@@ -366,7 +411,7 @@ class PortfolioManager:
             "Total Invested (EUR)",
             "Weighted Avg Buy Price (EUR)",
             "Weighted Avg Sell Price (EUR)",
-            "current_value",
+            "Current Price (EUR)",
             "Current Open Amount EUR",
         ]
 
@@ -380,6 +425,7 @@ class PortfolioManager:
             return pd.DataFrame()
 
         results = []
+        missing_prices: Set[str] = set()
 
         for _, row in summary.iterrows():
             name = row.get("name")
@@ -393,20 +439,25 @@ class PortfolioManager:
 
             remaining_qty = max(buy_qty - sell_qty, 0.0)
 
-            current_price = None
             current_value_eur = np.nan
             current_price_eur = np.nan
 
             if remaining_qty > 0 and ticker:
-                current_price = self._get_current_price(ticker, manual_values)
+                current_price, price_currency = self._get_current_price(
+                    ticker, manual_values
+                )
                 if current_price is not None:
-                    exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
+                    rate_currency = price_currency or currency or "EUR"
+                    exchange_rate = self.market_data.get_exchange_rate(
+                        rate_currency, "EUR"
+                    )
                     current_price_eur = current_price * exchange_rate
                     current_value_eur = remaining_qty * current_price_eur
                 else:
                     logger.debug(
                         "Skipping current value for '%s' due to missing market data", ticker
                     )
+                    missing_prices.add(ticker)
             elif remaining_qty <= 0:
                 current_value_eur = 0.0
 
@@ -443,5 +494,6 @@ class PortfolioManager:
 
         stock_view_df = pd.DataFrame(results)
         stock_view_df = stock_view_df.sort_values("Name").reset_index(drop=True)
+        self._missing_price_tickers.update(missing_prices)
         return stock_view_df
 

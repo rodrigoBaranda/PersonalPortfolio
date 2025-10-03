@@ -5,7 +5,7 @@ Handles stock prices and currency conversion
 import streamlit as st
 import yfinance as yf
 import requests
-from typing import Optional
+from typing import Optional, Tuple
 from utils import get_logger
 
 
@@ -18,40 +18,54 @@ class MarketDataProvider:
     EXCHANGE_API_URL = "https://api.exchangerate-api.com/v4/latest/"
 
     @st.cache_data(ttl=3600, show_spinner=False)
-    def get_stock_price(_self, ticker: str) -> Optional[float]:
-        """
-        Fetch current stock price using yfinance
-
-        Args:
-            ticker: Stock ticker symbol
-
-        Returns:
-            Current price or None if not available
-        """
+    def get_stock_quote(_self, ticker: str) -> Tuple[Optional[float], Optional[str]]:
+        """Fetch the latest available close price and its currency."""
         try:
-            logger.debug("Fetching stock price for ticker '%s'", ticker)
+            logger.debug("Fetching stock quote for ticker '%s'", ticker)
             stock = yf.Ticker(ticker)
 
-            # Try to get most recent price from history
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                price = float(hist['Close'].iloc[-1])
-                logger.debug("Using historical close price for '%s': %s", ticker, price)
-                return price
+            info = {}
+            currency: Optional[str] = None
+            try:
+                info = stock.info or {}
+                currency = info.get("currency")
+            except Exception:
+                logger.debug("Ticker info unavailable for '%s'", ticker)
 
-            # Fallback to info
-            info = stock.info
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            hist = stock.history(period="5d")
+            if not hist.empty:
+                close_prices = hist["Close"].dropna()
+                if not close_prices.empty:
+                    price = float(close_prices.iloc[-1])
+                    logger.debug(
+                        "Using historical close price for '%s': %s",
+                        ticker,
+                        price,
+                    )
+                    return price, currency
+
+            logger.debug(
+                "Historical data unavailable for '%s'; falling back to ticker info",
+                ticker,
+            )
+
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
             if price:
                 logger.debug("Using ticker info price for '%s': %s", ticker, price)
-            else:
-                logger.warning("No price information available for ticker '%s'", ticker)
-            return float(price) if price else None
+                return float(price), currency
+
+            logger.warning("No price information available for ticker '%s'", ticker)
+            return None, currency
 
         except Exception:
-            # Silently fail - will be handled by manual input
-            logger.exception("Failed to fetch stock price for '%s'", ticker)
-            return None
+            logger.exception("Failed to fetch stock quote for '%s'", ticker)
+            return None, None
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def get_stock_price(_self, ticker: str) -> Optional[float]:
+        """Return only the price portion of :meth:`get_stock_quote`."""
+        price, _ = _self.get_stock_quote(ticker)
+        return price
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def get_exchange_rate(_self, from_currency: str, to_currency: str = "EUR") -> float:
