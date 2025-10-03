@@ -20,24 +20,14 @@ logger = get_logger(__name__)
 
 def render_sidebar() -> Dict:
     """
-    Render sidebar with configuration options
+    Render a minimal sidebar without interactive controls.
 
     Returns:
-        Dictionary with configuration values
+        An empty dictionary (placeholder for future configuration values).
     """
-    with st.sidebar:
-        st.header("⚙️ Configuration")
+    st.sidebar.empty()
 
-        refresh_button = st.button("🔄 Refresh Data", type="primary", use_container_width=True)
-        if refresh_button:
-            logger.info("User requested data refresh")
-
-        st.markdown("---")
-        st.caption("💡 Google Sheets credentials are loaded from Streamlit secrets")
-
-    return {
-        'refresh_requested': refresh_button
-    }
+    return {}
 
 
 def render_dashboard(portfolio_manager: PortfolioManager):
