@@ -2,6 +2,7 @@
 Portfolio Management Core Logic
 Handles portfolio calculations and data processing
 """
+import numpy as np
 import pandas as pd
 from typing import Dict, Optional
 
@@ -171,4 +172,73 @@ class PortfolioManager:
 
         logger.warning("No price available for ticker '%s'", ticker)
         return None
+
+    def calculate_weighted_average_cost(self) -> pd.DataFrame:
+        """Calculate weighted average cost in EUR per company based on buy transactions."""
+        if self._transactions_df is None or self._transactions_df.empty:
+            logger.warning("No transactions loaded before calculating weighted average cost")
+            return pd.DataFrame()
+
+        required_columns = {"name", "quantity", "price_per_unit_eur", "gross_amount_eur", "type"}
+        missing_columns = required_columns - set(self._transactions_df.columns)
+
+        if missing_columns:
+            logger.error(
+                "Cannot compute weighted average cost; missing columns: %s",
+                ", ".join(sorted(missing_columns)),
+            )
+            return pd.DataFrame()
+
+        df = self._transactions_df.copy()
+        df = df[df["type"] == "Buy"]
+
+        if df.empty:
+            logger.info("No BUY transactions available for weighted average cost calculation")
+            return pd.DataFrame()
+
+        df = df[df["quantity"].notna()]
+        df = df[df["quantity"] > 0]
+
+        if df.empty:
+            logger.info("No BUY transactions with positive quantity found")
+            return pd.DataFrame()
+
+        effective_price = df["price_per_unit_eur"].copy()
+        fallback_price = df["gross_amount_eur"] / df["quantity"].replace({0: np.nan})
+        effective_price = effective_price.fillna(fallback_price)
+
+        df = df.assign(
+            effective_price_eur=effective_price,
+            invested_eur=lambda data: data["quantity"] * data["effective_price_eur"],
+        )
+
+        grouped = (
+            df.groupby("name", dropna=True)
+            .agg(
+                total_quantity=("quantity", "sum"),
+                total_invested_eur=("invested_eur", "sum"),
+            )
+            .reset_index()
+        )
+
+        grouped = grouped[grouped["total_quantity"] > 0]
+
+        if grouped.empty:
+            logger.info("No aggregated BUY transactions with positive quantity")
+            return pd.DataFrame()
+
+        grouped["weighted_avg_cost_eur"] = grouped["total_invested_eur"] / grouped["total_quantity"]
+
+        grouped = grouped.sort_values("name").reset_index(drop=True)
+        grouped.rename(
+            columns={
+                "name": "Name",
+                "total_quantity": "Total Quantity",
+                "total_invested_eur": "Total Invested (EUR)",
+                "weighted_avg_cost_eur": "Weighted Avg Cost (EUR)",
+            },
+            inplace=True,
+        )
+
+        return grouped
 
