@@ -29,10 +29,21 @@ def convert_euro_numbers(
 
     for col in columns:
         if col in df.columns:
-            df[col] = df[col].astype(str)
-            df[col] = df[col].str.replace(".", "", regex=False)
-            df[col] = df[col].str.replace(",", ".", regex=False)
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            string_values = df[col].astype(str)
+
+            percent_mask = string_values.str.contains("%", regex=False)
+            if percent_mask.any():
+                string_values = string_values.str.replace("%", "", regex=False)
+
+            string_values = string_values.str.replace(".", "", regex=False)
+            string_values = string_values.str.replace(",", ".", regex=False)
+
+            numeric_values = pd.to_numeric(string_values, errors="coerce")
+
+            if percent_mask.any():
+                numeric_values.loc[percent_mask] = numeric_values.loc[percent_mask] / 100
+
+            df[col] = numeric_values
 
     return df
 
