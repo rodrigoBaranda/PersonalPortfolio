@@ -9,10 +9,12 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
+from data.market_data import MarketDataProvider
 from utils import get_logger
 
 
 logger = get_logger(__name__)
+market_data_provider = MarketDataProvider()
 
 
 def show_setup_instructions():
@@ -103,6 +105,36 @@ def render_weighted_average_cost_summary(
 
     manual_values = st.session_state.setdefault("manual_values", {})
 
+    normalized_manual_values = {}
+    for ticker_key, value in manual_values.items():
+        if isinstance(value, dict):
+            price = value.get("price")
+            currency = value.get("currency")
+        else:
+            price = value
+            currency = "EUR"
+
+        try:
+            price = float(price) if price is not None else None
+        except (TypeError, ValueError):
+            logger.debug(
+                "Skipping normalization for ticker '%s' due to invalid price '%s'",
+                ticker_key,
+                price,
+            )
+            price = None
+
+        if isinstance(currency, str):
+            currency = currency.strip().upper() or None
+
+        normalized_manual_values[ticker_key] = {
+            "price": price,
+            "currency": currency,
+        }
+
+    st.session_state["manual_values"] = normalized_manual_values
+    manual_values = normalized_manual_values
+
     missing_price_series = (
         summary_df["Current Price (EUR)"].isna()
         if "Current Price (EUR)" in summary_df.columns
@@ -141,35 +173,89 @@ def render_weighted_average_cost_summary(
     if manual_candidate_mask.any():
         st.markdown("### ✏️ Update Missing Prices")
         st.caption(
-            "Provide the latest price for each open position below. Highlighted rows in the table correspond to these entries."
+            "Provide the latest price for each open position in the currency shown below. Highlighted rows in the table correspond to these entries."
         )
 
-        manual_editor_df = summary_df.loc[
-            manual_candidate_mask,
-            [col for col in ["Name", "Ticker", "Current Price (EUR)"] if col in summary_df.columns],
-        ].copy()
+        editor_columns = [
+            col
+            for col in ["Name", "Ticker", "Currency", "Current Price (EUR)"]
+            if col in summary_df.columns
+        ]
+        manual_editor_df = summary_df.loc[manual_candidate_mask, editor_columns].copy()
 
         if "Ticker" not in manual_editor_df.columns:
             manual_editor_df.insert(1, "Ticker", manual_editor_df["Name"])
 
-        def _apply_price_to_summary(ticker_value: str, name_value: str, price_value: float):
-            if pd.isna(price_value):
+        if "Currency" not in manual_editor_df.columns:
+            manual_editor_df.insert(2, "Currency", "EUR")
+
+        manual_editor_df.rename(columns={"Currency": "Input Currency"}, inplace=True)
+
+        if "Current Price (EUR)" in manual_editor_df.columns:
+            manual_editor_df.drop(columns=["Current Price (EUR)"], inplace=True)
+
+        manual_editor_df["Manual Price"] = pd.Series(
+            [None] * len(manual_editor_df),
+            index=manual_editor_df.index,
+            dtype="float64",
+        )
+
+        def _apply_price_to_summary(
+            ticker_value: str, name_value: str, price_value_eur: float
+        ):
+            if pd.isna(price_value_eur):
                 return
             if "Ticker" in summary_df.columns:
                 summary_df.loc[
                     summary_df["Ticker"] == ticker_value, "Current Price (EUR)"
-                ] = float(price_value)
+                ] = float(price_value_eur)
             else:
                 summary_df.loc[
                     summary_df["Name"] == name_value, "Current Price (EUR)"
-                ] = float(price_value)
+                ] = float(price_value_eur)
 
         for idx, row in manual_editor_df.iterrows():
             ticker = row.get("Ticker")
+            currency = row.get("Input Currency") or "EUR"
+            if isinstance(currency, str):
+                currency = currency.strip().upper() or "EUR"
             if ticker in manual_values:
-                manual_price = manual_values.get(ticker)
-                manual_editor_df.at[idx, "Current Price (EUR)"] = manual_price
-                _apply_price_to_summary(ticker, row.get("Name"), manual_price)
+                manual_entry = manual_values.get(ticker, {})
+                manual_price = manual_entry.get("price")
+                manual_currency = manual_entry.get("currency") or "EUR"
+                if manual_price is not None:
+                    if manual_currency != currency and manual_currency and currency:
+                        try:
+                            rate_to_eur = market_data_provider.get_exchange_rate(
+                                manual_currency, "EUR"
+                            )
+                            if currency == "EUR":
+                                converted_price = manual_price * rate_to_eur
+                            else:
+                                rate_from_eur = market_data_provider.get_exchange_rate(
+                                    "EUR", currency
+                                )
+                                converted_price = manual_price * rate_to_eur * rate_from_eur
+                        except Exception:
+                            logger.exception(
+                                "Failed to convert manual price for ticker '%s'", ticker
+                            )
+                            converted_price = manual_price
+                    else:
+                        converted_price = manual_price
+
+                    try:
+                        manual_editor_df.at[idx, "Manual Price"] = float(converted_price)
+                    except (TypeError, ValueError):
+                        manual_editor_df.at[idx, "Manual Price"] = converted_price
+
+                    price_eur = manual_price
+                    if manual_currency and manual_currency != "EUR":
+                        price_eur = manual_price * market_data_provider.get_exchange_rate(
+                            manual_currency, "EUR"
+                        )
+
+                    _apply_price_to_summary(ticker, row.get("Name"), price_eur)
 
         st.markdown(
             """
@@ -194,9 +280,16 @@ def render_weighted_average_cost_summary(
                         disabled=True,
                         help="Identifier used for manual price overrides.",
                     ),
-                    "Current Price (EUR)": st.column_config.NumberColumn(
-                        "Current Price (EUR)",
-                        help="Provide the latest price per share in EUR.",
+                    "Input Currency": st.column_config.TextColumn(
+                        "Currency",
+                        disabled=True,
+                        help="Currency detected from your transactions for this position.",
+                    ),
+                    "Manual Price": st.column_config.NumberColumn(
+                        "Current Price",
+                        help=(
+                            "Provide the latest price per share in the displayed currency."
+                        ),
                         min_value=0.0,
                         step=0.01,
                         format="%.2f",
@@ -212,12 +305,26 @@ def render_weighted_average_cost_summary(
         if submitted:
             for _, row in edited_manual_df.iterrows():
                 ticker = row.get("Ticker")
-                price = row.get("Current Price (EUR)")
+                price = row.get("Manual Price")
+                currency = row.get("Input Currency") or "EUR"
+                if isinstance(currency, str):
+                    currency = currency.strip().upper() or "EUR"
                 if not ticker:
                     continue
                 if pd.notna(price) and float(price) > 0:
-                    manual_values[ticker] = float(price)
-                    _apply_price_to_summary(ticker, row.get("Name"), price)
+                    numeric_price = float(price)
+                    manual_values[ticker] = {
+                        "price": numeric_price,
+                        "currency": currency,
+                    }
+
+                    price_eur = numeric_price
+                    if currency and currency != "EUR":
+                        price_eur *= market_data_provider.get_exchange_rate(
+                            currency, "EUR"
+                        )
+
+                    _apply_price_to_summary(ticker, row.get("Name"), price_eur)
                 elif ticker in manual_values:
                     manual_values.pop(ticker)
 

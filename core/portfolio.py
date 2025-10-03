@@ -4,7 +4,7 @@ Handles portfolio calculations and data processing
 """
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple, Union
 
 from core.data_quality import clean_transactions
 from data.google_sheets import GoogleSheetsClient
@@ -79,12 +79,16 @@ class PortfolioManager:
         self._positions = {}
         return self._positions
 
-    def calculate_portfolio_value(self, manual_values: Dict[str, float]) -> pd.DataFrame:
+    def calculate_portfolio_value(
+        self, manual_values: Dict[str, Union[float, Dict[str, Any]]]
+    ) -> pd.DataFrame:
         """
         Calculate current portfolio value and returns
 
         Args:
-            manual_values: Dictionary of manual price inputs for non-stock positions
+            manual_values: Dictionary of manual price inputs for non-stock positions.
+                Each value can be either a float representing a EUR price or a
+                dictionary containing ``price`` and ``currency`` keys.
 
         Returns:
             DataFrame with portfolio performance metrics
@@ -163,7 +167,7 @@ class PortfolioManager:
         return row.get('Ticker', row.get('ticker', row.get('Symbol', '')))
 
     def _get_current_price(
-        self, ticker: str, manual_values: Dict[str, float]
+        self, ticker: str, manual_values: Dict[str, Union[float, Dict[str, Any]]]
     ) -> Tuple[Optional[float], Optional[str]]:
         """Resolve the most appropriate price and its currency for the given ticker."""
 
@@ -178,9 +182,37 @@ class PortfolioManager:
             return price, currency
 
         if ticker in manual_values:
-            manual_price = manual_values[ticker]
-            logger.debug("Using manual price for ticker '%s': %s", ticker, manual_price)
-            return manual_price, "EUR"
+            manual_entry = manual_values[ticker]
+            manual_price: Optional[float]
+            manual_currency: Optional[str]
+
+            if isinstance(manual_entry, dict):
+                manual_price = manual_entry.get("price")
+                manual_currency = manual_entry.get("currency")
+            else:
+                manual_price = manual_entry
+                manual_currency = "EUR"
+
+            if manual_price is not None:
+                try:
+                    manual_price = float(manual_price)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid manual price provided for ticker '%s': %s",
+                        ticker,
+                        manual_price,
+                    )
+                    manual_price = None
+
+            if manual_price is not None:
+                currency = manual_currency or "EUR"
+                logger.debug(
+                    "Using manual price for ticker '%s': %s %s",
+                    ticker,
+                    currency,
+                    manual_price,
+                )
+                return manual_price, currency
 
         logger.warning("No price available for ticker '%s'", ticker)
         return None, None
@@ -330,7 +362,7 @@ class PortfolioManager:
         return sorted(self._missing_price_tickers)
 
     def calculate_weighted_average_cost(
-        self, manual_values: Optional[Dict[str, float]] = None
+        self, manual_values: Optional[Dict[str, Union[float, Dict[str, Any]]]] = None
     ) -> pd.DataFrame:
         """Calculate weighted average pricing summary per company including buy and sell data."""
         manual_values = manual_values or {}
@@ -384,6 +416,7 @@ class PortfolioManager:
                 "total_invested_eur": "Total Invested (EUR)",
                 "weighted_avg_buy_price_eur": "Weighted Avg Buy Price (EUR)",
                 "weighted_avg_sell_price_eur": "Weighted Avg Sell Price (EUR)",
+                "currency": "Currency",
             }
         )
 
@@ -392,8 +425,10 @@ class PortfolioManager:
 
         summary = summary.sort_values("Current Open Amount EUR", ascending=False).reset_index(drop=True)
 
+        if "Currency" not in summary.columns:
+            summary["Currency"] = "EUR"
+
         columns_to_drop = [
-            "currency",
             "sell_transactions",
             "buy_quantity",
             "sell_quantity",
@@ -405,6 +440,7 @@ class PortfolioManager:
         column_order = [
             "Name",
             "Ticker",
+            "Currency",
             "Position Status",
             "Purchased Times",
             "Number of Shares",
@@ -419,7 +455,9 @@ class PortfolioManager:
 
         return summary[column_order]
 
-    def calculate_stock_view(self, manual_values: Optional[Dict[str, float]] = None) -> pd.DataFrame:
+    def calculate_stock_view(
+        self, manual_values: Optional[Dict[str, Union[float, Dict[str, Any]]]] = None
+    ) -> pd.DataFrame:
         """Return a stock-centric view with profit calculations."""
         manual_values = manual_values or {}
         summary = self._prepare_transaction_summary()
