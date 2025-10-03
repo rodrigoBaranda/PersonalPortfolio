@@ -4,7 +4,7 @@ Handles portfolio calculations and data processing
 """
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Tuple
 
 from core.data_quality import clean_transactions
 from data.google_sheets import GoogleSheetsClient
@@ -100,19 +100,22 @@ class PortfolioManager:
                 continue
 
             # Get current price (from market or manual input)
-            current_price = self._get_current_price(ticker, manual_values)
+            current_price, price_currency = self._get_current_price(
+                ticker, manual_values
+            )
             if current_price is None or current_price == 0:
                 logger.warning("Skipping ticker '%s' due to missing current price", ticker)
                 continue
 
-            # Get exchange rate
-            exchange_rate = self.market_data.get_exchange_rate(
-                position['currency'],
-                'EUR'
-            )
+            price_currency = price_currency or position.get("currency", "EUR")
+            exchange_rate = self.market_data.get_exchange_rate(price_currency, "EUR")
 
             # Calculate values in EUR
-            invested_eur = position['invested'] * exchange_rate
+            invested_currency = position.get("currency", price_currency)
+            invested_exchange = self.market_data.get_exchange_rate(
+                invested_currency, "EUR"
+            )
+            invested_eur = position['invested'] * invested_exchange
             current_value_eur = position['quantity'] * current_price * exchange_rate
             returns = current_value_eur - invested_eur
             returns_pct = (returns / invested_eur * 100) if invested_eur > 0 else 0
@@ -159,20 +162,28 @@ class PortfolioManager:
         """Extract ticker from transaction row"""
         return row.get('Ticker', row.get('ticker', row.get('Symbol', '')))
 
-    def _get_current_price(self, ticker: str, manual_values: Dict[str, float]) -> Optional[float]:
-        """Resolve the most appropriate price for the given ticker."""
-        price = self.market_data.get_stock_price(ticker)
+    def _get_current_price(
+        self, ticker: str, manual_values: Dict[str, float]
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """Resolve the most appropriate price and its currency for the given ticker."""
+
+        price, currency = self.market_data.get_stock_quote(ticker)
         if price is not None:
-            logger.debug("Fetched market price for ticker '%s': %s", ticker, price)
-            return price
+            logger.debug(
+                "Fetched market price for ticker '%s': %s %s",
+                ticker,
+                currency or "UNKNOWN",
+                price,
+            )
+            return price, currency
 
         if ticker in manual_values:
             manual_price = manual_values[ticker]
             logger.debug("Using manual price for ticker '%s': %s", ticker, manual_price)
-            return manual_price
+            return manual_price, "EUR"
 
         logger.warning("No price available for ticker '%s'", ticker)
-        return None
+        return None, None
 
     @staticmethod
     def _calculate_weighted_average(total_amounts: pd.Series, total_quantities: pd.Series) -> pd.Series:
@@ -338,9 +349,14 @@ class PortfolioManager:
             current_price_eur = np.nan
 
             if shares_outstanding > 0 and ticker:
-                market_price = self._get_current_price(ticker, manual_values)
+                market_price, price_currency = self._get_current_price(
+                    ticker, manual_values
+                )
                 if market_price is not None:
-                    exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
+                    rate_currency = price_currency or currency or "EUR"
+                    exchange_rate = self.market_data.get_exchange_rate(
+                        rate_currency, "EUR"
+                    )
                     current_price_eur = market_price * exchange_rate
                 else:
                     missing_prices.add(ticker)
@@ -423,14 +439,18 @@ class PortfolioManager:
 
             remaining_qty = max(buy_qty - sell_qty, 0.0)
 
-            current_price = None
             current_value_eur = np.nan
             current_price_eur = np.nan
 
             if remaining_qty > 0 and ticker:
-                current_price = self._get_current_price(ticker, manual_values)
+                current_price, price_currency = self._get_current_price(
+                    ticker, manual_values
+                )
                 if current_price is not None:
-                    exchange_rate = self.market_data.get_exchange_rate(currency, "EUR")
+                    rate_currency = price_currency or currency or "EUR"
+                    exchange_rate = self.market_data.get_exchange_rate(
+                        rate_currency, "EUR"
+                    )
                     current_price_eur = current_price * exchange_rate
                     current_value_eur = remaining_qty * current_price_eur
                 else:
